@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: app-gateway
+  profiles:
+    active: dev
+  cloud:
+    nacos:
+      server-addr: 192.168.136.101:8848
+      config:
+        namespace: 245fe186-8a54-4952-8aed-b2cac4c75c2e
+        refresh-enabled: true
+        file-extension: yml
+  config:
+    import: nacos:app-gateway-dev.yml
+
+
+

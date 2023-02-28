@@ -1,0 +1,20 @@
+spring:
+  application:
+    name: media-service
+  mvc:
+    #spring boot 高版本整合swagger报错解决
+    pathmatch:
+      matching-strategy: ant_path_matcher
+  profiles:
+    active: dev
+  cloud:
+    nacos:
+      server-addr: 192.168.136.101:8848
+      config:
+        namespace: 245fe186-8a54-4952-8aed-b2cac4c75c2e
+        file-extension: yml
+        refresh-enabled: true
+  config:
+    import:
+      - nacos:${spring.application.name}-${spring.profiles.active}.${spring.cloud.nacos.config.file-extension}?refresh=true
+      - nacos:common.yml

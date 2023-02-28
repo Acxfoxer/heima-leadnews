@@ -1,0 +1,18 @@
+version: '3.0'
+services:
+  nginx:
+    image: nginx:latest
+    container_name: "nginx"
+    ports:
+      - 80:80
+      - 81:81
+      - 8801:8801
+      - 8802:8802
+      - 8803:8803
+      - 8804:8804
+      - 8805:8805
+    volumes:
+      - /mydata/nginx/conf/nginx.conf:/etc/nginx/nginx.conf
+      - /mydata/nginx/conf/conf.d:/etc/nginx/conf.d
+      - /mydata/nginx/logs:/var/log/nginx
+      - /mydata/nginx/html:/usr/share/nginx/html
