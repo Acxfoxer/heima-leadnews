@@ -8,6 +8,9 @@ import com.heima.model.media.dto.WmNewsPageReqDto;
 import com.heima.model.media.pojos.WmNews;
 
 
+/**
+ * @author 18727
+ */
 public interface WmNewsService extends IService<WmNews> {
 
     /**
@@ -29,4 +32,10 @@ public interface WmNewsService extends IService<WmNews> {
      * @return
      */
     ResponseResult downOrUp(WmNews wmNews);
+
+    /**
+     * 自媒体文章审核
+     * @param id  自媒体文章id
+     */
+    public void autoScanWmNews(Integer id);
 }

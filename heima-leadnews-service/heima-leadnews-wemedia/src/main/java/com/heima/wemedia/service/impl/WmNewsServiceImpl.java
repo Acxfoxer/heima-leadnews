@@ -4,44 +4,57 @@ import com.alibaba.fastjson.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.heima.common.constants.WmNewsConstants;
 import com.heima.common.exceptionHandle.CustomException;
+import com.heima.feign.article.ArticleFeignClient;
+import com.heima.minio.service.FileStorageService;
+import com.heima.model.article.dto.ArticleDto;
 import com.heima.model.common.dtos.PageResponseResult;
 import com.heima.model.common.dtos.ResponseResult;
 import com.heima.model.common.enums.AppHttpCodeEnum;
 import com.heima.model.media.dto.WmNewsDto;
 import com.heima.model.media.dto.WmNewsPageReqDto;
-import com.heima.model.media.pojos.WmMaterial;
-import com.heima.model.media.pojos.WmNews;
-import com.heima.model.media.pojos.WmNewsMaterial;
+import com.heima.model.media.pojos.*;
 import com.heima.utils.common.UserThreadLocalUtils;
-import com.heima.wemedia.mapper.WmMaterialMapper;
-import com.heima.wemedia.mapper.WmNewsMapper;
-import com.heima.wemedia.mapper.WmNewsMaterialMapper;
+import com.heima.wemedia.mapper.*;
 import com.heima.wemedia.service.WmNewsService;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
+import javax.annotation.Resource;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletRequestWrapper;
+import java.util.*;
 import java.util.stream.Collectors;
 
 
+/**
+ * @author 18727
+ */
 @Service
-@Transactional
+@Transactional(rollbackFor = {CustomException.class})
 public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> implements WmNewsService {
     @Autowired
     WmNewsMapper newsMapper;
     @Autowired
     WmNewsMaterialMapper wmNewsMaterialMapper;
     @Autowired
+    WmChannelMapper wmChannelMapper;
+    @Autowired
     WmMaterialMapper wmMaterialMapper;
+    @Autowired
+    FileStorageService fileStorageService;
+    @Autowired
+    WmUserMapper wmUserMapper;
+    @Resource
+    ArticleFeignClient articleFeignClient;
 
     /**
      * 分页
@@ -101,13 +114,22 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
         }
         //5.提交审核,保存内容图片与素材的关系
         //5.1获取内容图片信息
-        List<String> image = getImage(dto.getContent());
+        List<Map> maps = JSON.parseArray(wmNews.getContent(), Map.class);
+        List<String> image = new ArrayList<>();
+        maps.forEach(map->{
+            if("image".equals(map.get("type"))){
+                image.add(map.get("value").toString());
+            }
+        });
         //6.建立文章内容图片与素材库关系
         saveRelationInfoContent(dto,image,wmNews);
         //6.1 建立文章封面图片与素材库关系
         saveRelationInfo(dto,image,wmNews);
+        //7.调用自动审核方法
+        autoScanWmNews(wmNews.getId());
         return ResponseResult.okResult(AppHttpCodeEnum.SUCCESS);
     }
+
 
     /**
      * 封面图片与素材建立联系
@@ -120,16 +142,16 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
         //如果自动,则重新设置news的image属性
         if(dto.getType().equals((short)-1)){
             //文章图片大于3,最多取三个
-            if(image.size()>=3){
-                wmNews.setType((short) 3);
+            if(image.size()>=WmNewsConstants.imageStatus.THREE.getCode()){
+                wmNews.setType(WmNewsConstants.imageStatus.THREE.getCode());
                images = image.stream().limit(3).collect(Collectors.toList());
-            }else if(image.size()>=1){
+            }else if(image.size()>=WmNewsConstants.imageStatus.ONE.getCode()){
                 //图片小于3张,取一张
-                wmNews.setType((short) 1);
+                wmNews.setType(WmNewsConstants.imageStatus.ONE.getCode());
                 images =image.stream().limit(1).collect(Collectors.toList());
             }else {
                 //无图
-                wmNews.setType((short) 0);
+                wmNews.setType(WmNewsConstants.imageStatus.NONE.getCode());
             }
             //修改news的图片
             if(images!=null&&images.size()>0){
@@ -204,20 +226,102 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
     }
 
     /**
-     * 获取文章图片
-     * @param content
+     * 自媒体文章审核
+     * @param id 自媒体文章id
+     */
+    @Async
+    @Override
+    public void autoScanWmNews(Integer id) {
+        //1.查询自媒体文章
+        WmNews wmNews = newsMapper.selectById(id);
+        if(wmNews==null){
+            throw new RuntimeException("文章不存在");
+        }
+        //判断文章状态是不是处于正在提交的状态中
+        if(wmNews.getStatus().equals(WmNews.Status.SUBMIT.getCode())){
+            //从内容中获取纯文本,跟图片
+            Map<String, Object> map = getImageOrText(wmNews);
+            //审核图片,审核不通过,返回
+            if(!moderationImages((List<String>) map.get("images"), wmNews)){
+                return;
+            };
+            //审核文档
+            if(!moderationText(wmNews.getContent(),wmNews)){
+                return;
+            }
+            //远程调用article保存接口
+            ResponseResult result = saveArticle(wmNews);
+            if(result.getCode()!=200){
+                throw new CustomException(AppHttpCodeEnum.SERVER_ERROR);
+            }
+            //审核成功,更新后台文章数据
+            //获取文章id
+            Long articleId = (Long) result.getData();
+            wmNews.setArticleId(articleId);
+            updateWmNews(wmNews, (short) 9,"审核成功");
+        }
+
+    }
+    /**
+     * 保存文章到服务端
+     * @param wmNews
      * @return
      */
-    private List<String> getImage(String content){
-        List<String> materials = new ArrayList<>();
-        List<Map> maps = JSON.parseArray(content, Map.class);
-        for (Map map : maps) {
-            if(map.get("type").equals("image")){
-                String imgUrl = (String) map.get("value");
-                materials.add(imgUrl);
+    private ResponseResult saveArticle(WmNews wmNews){
+        ArticleDto dto = new ArticleDto();
+        BeanUtils.copyProperties(wmNews,dto);
+        dto.setLayout(wmNews.getType());
+        //频道名字
+        WmChannel wmChannel = wmChannelMapper.selectById(wmNews.getChannelId());
+        if(wmChannel!=null){
+            dto.setChannelName(wmChannel.getName());
+        }
+        //作者名字,与Id
+        dto.setAuthorId(wmNews.getUserId().longValue());
+        WmUser wmUser = wmUserMapper.selectById(wmNews.getUserId());
+        if(wmUser!=null){
+            dto.setAuthorName(wmUser.getName());
+        }
+        //文章id
+        if(wmNews.getArticleId()!=null){
+            dto.setId(wmNews.getArticleId());
+        }
+        dto.setCreatedTime(new Date());
+        ResponseResult result = articleFeignClient.saveOrUpdate(dto);
+        return result;
+    }
+    /**
+     * 获取文章图片或者文本信息
+     * @param wmNews
+     * @return
+     */
+    private Map<String,Object> getImageOrText(WmNews wmNews){
+        //存储,纯文本内容
+        StringBuilder sb = new StringBuilder();
+        //存粹,图片地址
+        List<String> images = new ArrayList<>();
+        Map<String,Object> resultMap = new HashMap<>();
+        if(StringUtils.isNotBlank(wmNews.getContent())){
+            List<Map> maps = JSON.parseArray(wmNews.getContent(), Map.class);
+            for (Map map : maps) {
+                //文本内容
+                if("text".equals(map.get("type"))){
+                    sb.append(map.get("value"));
+                }
+                if("image".equals(map.get("type"))){
+                    images.add(map.get("value").toString());
+                }
             }
         }
-        return materials;
+        //提取封面图片
+        //2.提取文章的封面图片
+        if(StringUtils.isNotBlank(wmNews.getImages())){
+            String[] split = wmNews.getImages().split(",");
+            images.addAll(Arrays.asList(split));
+        }
+        resultMap.put("content",sb);
+        resultMap.put("images",images);
+        return resultMap;
     }
     /**
      * 保存或修改文章
@@ -228,7 +332,8 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
         wmNews.setUserId(Math.toIntExact(UserThreadLocalUtils.get()));
         wmNews.setCreatedTime(new Date());
         wmNews.setSubmitedTime(new Date());
-        wmNews.setEnable((short)1);//默认上架
+        //上架
+        wmNews.setEnable((short)1);
         if(wmNews.getId() == null){
             //保存
             save(wmNews);
@@ -241,5 +346,110 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
             updateById(wmNews);
         }
 
+    }
+
+
+
+    /**
+     * 调用阿里云文章审核接口
+     * @param wmNews
+     */
+    public boolean moderationText(String content,WmNews wmNews){
+        boolean flag=true;
+        //标题跟内容长度为0,直接返回
+        if(content.length()==0&&wmNews.getTitle().length()==0){
+            return flag;
+        }
+        //审核文章
+        try {
+        Map<String, Object> map = textScan(content);
+        if(map!=null){
+            //block代表审核失败
+            if("block".equals(map.get("suggestion"))){
+                flag=false;
+                updateWmNews(wmNews, (short) 2,"文章内容违规,请修改");
+            }
+            //不确定信息
+            if("review".equals(map.get("suggestion"))){
+                flag=false;
+                updateWmNews(wmNews, (short) 3,"文章审核,违规存疑");
+            }
+            }
+        }catch (Exception e){
+            flag =false;
+            e.printStackTrace();
+        }
+        return flag;
+    }
+    /**
+     * 调用阿里云图片检测接口
+     * @param images
+     * @return
+     */
+    public boolean moderationImages(List<String> images,WmNews wmNews){
+        boolean flag = true;
+        if(images==null||images.size()==0){
+                flag=false;
+        }
+        //图片去重
+        List<String> imageList = images.stream().distinct().collect(Collectors.toList());
+        List<byte[]> list = new ArrayList<>();
+        for (String s : imageList) {
+            byte[] bytes = fileStorageService.downLoadFile(s);
+            list.add(bytes);
+        }
+        //审核图片
+        try {
+            Map<String, Object> map = imageScan(imageList);
+            if(map != null){
+                //审核失败
+                if("block".equals(map.get("suggestion"))){
+                    flag = false;
+                    updateWmNews(wmNews, (short) 2, "图片内容违规");
+                }
+                //不确定信息  需要人工审核
+                if("review".equals(map.get("suggestion"))){
+                    flag = false;
+                    updateWmNews(wmNews, (short) 3, "无法自动识别图片是否违规");
+                }
+            }
+            return flag;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * 更新 状态,原因
+     * @param wmNews
+     * @param status
+     * @param str
+     */
+    private void updateWmNews(WmNews wmNews, short status, String str) {
+        wmNews.setReason(str);
+        wmNews.setStatus(status);
+        this.updateById(wmNews);
+    }
+
+    /**
+     * 图片扫描接口
+     * @param imageList
+     * @return
+     */
+    private Map<String,Object> imageScan(List<String> imageList){
+        Map<String,Object> map = new HashMap<>();
+        map.put("suggestion","pass");
+        return map;
+    }
+
+    /**
+     * 图片扫描接口
+     * @param content
+     * @return
+     */
+    private Map<String,Object> textScan(String content){
+        Map<String,Object> map = new HashMap<>();
+        map.put("suggestion","pass");
+        return map;
     }
 }

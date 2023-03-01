@@ -1,30 +1,32 @@
 package com.heima.article.service.impl;
 
 import com.alibaba.fastjson.JSONArray;
-import com.alibaba.nacos.shaded.io.grpc.netty.shaded.io.netty.util.internal.ObjectUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.heima.article.mapper.ApArticleConfigMapper;
 import com.heima.article.mapper.ApArticleContentMapper;
 import com.heima.article.mapper.ApArticleMapper;
 import com.heima.article.service.ApArticleService;
 import com.heima.common.constants.ArticleLoadMode;
+import com.heima.common.exceptionHandle.CustomException;
 import com.heima.minio.service.FileStorageService;
+import com.heima.model.article.dto.ArticleDto;
 import com.heima.model.article.dto.ArticleHomeDto;
 import com.heima.model.article.pojos.ApArticle;
+import com.heima.model.article.pojos.ApArticleConfig;
 import com.heima.model.article.pojos.ApArticleContent;
 import com.heima.model.common.dtos.ResponseResult;
 import freemarker.template.Configuration;
 import freemarker.template.Template;
-import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
-import javax.xml.crypto.Data;
+import javax.validation.constraints.NotNull;
 import java.io.ByteArrayInputStream;
-import java.io.IOException;
 import java.io.InputStream;
 import java.io.StringWriter;
 import java.util.Date;
@@ -33,17 +35,22 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+/**
+ * @author 18727
+ */
 @Service
-@Transactional
+@Transactional(rollbackFor = CustomException.class)
 public class ApArticleServiceImpl extends ServiceImpl<ApArticleMapper, ApArticle> implements ApArticleService {
     @Resource
     private ApArticleMapper apArticleMapper;
     @Resource
     private ApArticleContentMapper contentMapper;
-    @Autowired
+    @Resource
     private FileStorageService fileStorageService;
-    @Autowired
+    @Resource
     private Configuration configuration;
+    @Resource
+    private ApArticleConfigMapper apArticleConfigMapper;
 
     private final static short MAX_PAGE_SIZE = 50;
 
@@ -73,8 +80,12 @@ public class ApArticleServiceImpl extends ServiceImpl<ApArticleMapper, ApArticle
             dto.setTag(ArticleLoadMode.DEFAULT_TAG);
         }
         //4 时间校验
-        if(dto.getMaxBehotTime()==null)dto.setMaxBehotTime(new Date(20000000000000L));
-        if(dto.getMinBehotTime()==null)dto.setMinBehotTime(new Date());
+        if(dto.getMaxBehotTime()==null) {
+            dto.setMaxBehotTime(new Date(20000000000000L));
+        }
+        if(dto.getMinBehotTime()==null) {
+            dto.setMinBehotTime(new Date());
+        }
         List<ApArticle> apArticles = apArticleMapper.loadArticleList(dto);
         LambdaQueryWrapper<ApArticleContent> lqw = new LambdaQueryWrapper<>();
         //5.生成静态页面
@@ -95,6 +106,45 @@ public class ApArticleServiceImpl extends ServiceImpl<ApArticleMapper, ApArticle
         }).collect(Collectors.toList());
         //6.返回数据
         return ResponseResult.okResult(apArticleList);
+    }
+
+    /**
+     * 添加文章
+     *
+     * @param dto
+     * @return
+     */
+    @Override
+    public ResponseResult saveOrUpdate(@NotNull ArticleDto dto) {
+        //1.保存文章信息 ap_article
+        ApArticle apArticle = new ApArticle();
+        ApArticleContent content = new ApArticleContent();
+        if(dto.getId()==null){
+            BeanUtils.copyProperties(dto,apArticle);
+            this.save(apArticle);
+            //2.保存文章内容 ap_article_content
+            content.setArticleId(apArticle.getId());
+            content.setContent(dto.getContent());
+            contentMapper.insert(content);
+            //3.保存文章配置信息
+            ApArticleConfig apArticleConfig = new ApArticleConfig();
+            apArticleConfig.setIsComment(1);
+            apArticleConfig.setIsForward(1);
+            apArticleConfig.setIsDelete(0);
+            apArticleConfig.setIsDown(0);
+            apArticleConfig.setArticleId(apArticle.getId());
+            apArticleConfigMapper.insert(apArticleConfig);
+        }else {
+            BeanUtils.copyProperties(dto,apArticle);
+            //修改文章
+            this.updateById(apArticle);
+            //更新文章内容
+            content.setContent(dto.getContent());
+            LambdaQueryWrapper<ApArticleContent> lqw = new LambdaQueryWrapper<>();
+            contentMapper.update(content, lqw.eq(ApArticleContent::getArticleId,dto.getId()));
+        }
+        //返回新增id
+        return ResponseResult.okResult(apArticle.getId());
     }
 
 

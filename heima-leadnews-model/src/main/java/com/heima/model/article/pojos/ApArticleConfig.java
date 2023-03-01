@@ -12,6 +12,7 @@ import java.io.Serializable;
  * <p>
  * APP已发布文章配置表
  * </p>
+ * @author 18727
  */
 
 @Data
@@ -31,7 +32,7 @@ public class ApArticleConfig implements Serializable {
      * false: 不可评论  0
      */
     @TableField("is_comment")
-    private Boolean isComment;
+    private Integer isComment;
 
     /**
      * 是否转发
@@ -39,7 +40,7 @@ public class ApArticleConfig implements Serializable {
      * false: 不可转发  0
      */
     @TableField("is_forward")
-    private Boolean isForward;
+    private Integer isForward;
 
     /**
      * 是否下架
@@ -47,7 +48,7 @@ public class ApArticleConfig implements Serializable {
      * false: 没有下架  0
      */
     @TableField("is_down")
-    private Boolean isDown;
+    private Integer isDown;
 
     /**
      * 是否已删除
@@ -55,5 +56,5 @@ public class ApArticleConfig implements Serializable {
      * false: 没有删除  0
      */
     @TableField("is_delete")
-    private Boolean isDelete;
+    private Integer isDelete;
 }

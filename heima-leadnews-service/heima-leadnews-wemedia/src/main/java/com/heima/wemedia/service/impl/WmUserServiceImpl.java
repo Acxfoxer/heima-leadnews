@@ -16,6 +16,9 @@ import org.springframework.util.DigestUtils;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * @author 18727
+ */
 @Service
 public class WmUserServiceImpl extends ServiceImpl<WmUserMapper, WmUser> implements WmUserService {
 
@@ -25,7 +28,6 @@ public class WmUserServiceImpl extends ServiceImpl<WmUserMapper, WmUser> impleme
         if(StringUtils.isBlank(dto.getName()) || StringUtils.isBlank(dto.getPassword())){
             return ResponseResult.errorResult(AppHttpCodeEnum.PARAM_INVALID,"用户名或密码为空");
         }
-
         //2.查询用户
         WmUser wmUser = getOne(Wrappers.<WmUser>lambdaQuery().eq(WmUser::getName, dto.getName()));
         if(wmUser == null){
@@ -43,7 +45,6 @@ public class WmUserServiceImpl extends ServiceImpl<WmUserMapper, WmUser> impleme
             wmUser.setPassword("");
             map.put("user",wmUser);
             return ResponseResult.okResult(map);
-
         }else {
             return ResponseResult.errorResult(AppHttpCodeEnum.LOGIN_PASSWORD_ERROR);
         }

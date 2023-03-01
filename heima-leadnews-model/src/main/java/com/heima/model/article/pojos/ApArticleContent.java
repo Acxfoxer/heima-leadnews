@@ -8,6 +8,9 @@ import lombok.Data;
 
 import java.io.Serializable;
 
+/**
+ * @author 18727
+ */
 @Data
 @TableName("ap_article_content")
 public class ApArticleContent implements Serializable {

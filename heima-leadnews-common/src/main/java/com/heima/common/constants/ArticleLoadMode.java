@@ -1,5 +1,8 @@
 package com.heima.common.constants;
 
+/**
+ * @author 18727
+ */
 public class ArticleLoadMode {
     public  final static Short LOADTYPE_LOAD_MORE = 1;
     public final  static  Short LOADTYPE_LOAD_DEFAULT = 0;

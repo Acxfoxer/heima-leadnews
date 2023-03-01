@@ -1,6 +1,7 @@
 package com.heima.article.web.v1;
 
 import com.heima.article.service.ApArticleService;
+import com.heima.model.article.dto.ArticleDto;
 import com.heima.model.article.dto.ArticleHomeDto;
 import com.heima.model.article.pojos.ApArticle;
 import com.heima.model.common.dtos.ResponseResult;
@@ -54,5 +55,16 @@ public class ArticleController {
     @PostMapping("/article/loadnew")
     public ResponseResult<List<ApArticle>> loadNew(@RequestBody ArticleHomeDto articleHomeDto){
         return apArticleService.load(articleHomeDto);
+    }
+
+    /**
+     * 保存文章
+     * @param dto
+     * @return
+     */
+    @ApiOperation("保存文章")
+    @PostMapping("/article/save")
+    public ResponseResult saveOrUpdate(@RequestBody ArticleDto dto){
+        return apArticleService.saveOrUpdate(dto);
     }
 }

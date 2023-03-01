@@ -27,7 +27,9 @@ public enum AppHttpCodeEnum {
     // 数据错误 3000~3500
     NO_OPERATOR_AUTH(3000,"无权限操作"),
     NEED_ADMIND(3001,"需要管理员权限"),
-    MATERIASL_REFERENCE_FAIL(3002,"关联失败");
+    MATERIASL_REFERENCE_FAIL(3002,"关联失败"),
+    MODERATION_IMAGE(3003,"图片违规"),
+    MODERATION_TEXT(3004,"内容违规");
 
     final int code;
     final String errorMessage;

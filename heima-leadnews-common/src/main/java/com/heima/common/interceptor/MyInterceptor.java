@@ -13,9 +13,13 @@ import java.util.Enumeration;
 import java.util.Optional;
 
 
+/**
+ * @author 18727
+ */
 @Component
 @Slf4j
 public class MyInterceptor implements HandlerInterceptor {
+    private String swaggerStr="springfox.documentation.swagger.web.ApiResourceController";
     /**
      * 限制访问
      * @param request  请求
@@ -26,7 +30,7 @@ public class MyInterceptor implements HandlerInterceptor {
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
         //判断请求类是不是swagger的控制器,直接放行
-        if(handler.getClass().getName().equals("springfox.documentation.swagger.web.ApiResourceController")){
+        if(swaggerStr.equals(handler.getClass().getName())){
             return true;
         }
         Enumeration<String> token = request.getHeaders("token");
@@ -35,22 +39,39 @@ public class MyInterceptor implements HandlerInterceptor {
             response.setStatus(403);
             return false;
         }
-        String userId = request.getHeader("userId");
-        System.out.println(userId);
-        if(!userId.equals("null")){
-            //把用户id存入threadloacl中
+        String mediaLoginUrl = "/article";
+        if(!request.getRequestURI().contains(mediaLoginUrl)){
+            String userId = request.getHeader("userId");
+            System.out.println(userId);
+            //把用户id存入ThreadLocal中
             UserThreadLocalUtils.setUserID(Long.valueOf(userId));
-            log.info("wmTokenFilter设置用户Id到threadlocal中...");
+            log.info("wmTokenFilter设置用户Id到ThreadLocal中...");
+
         }
         return true;
     }
-    //controller后执行,异常情况下不会执行
+
+    /**
+     * controller后执行,异常情况下不会执行
+     * @param request
+     * @param response
+     * @param handler
+     * @param modelAndView
+     * @throws Exception
+     */
     @Override
     public void postHandle(HttpServletRequest request, HttpServletResponse response, Object handler, ModelAndView modelAndView) throws Exception {
         HandlerInterceptor.super.postHandle(request, response, handler, modelAndView);
     }
 
-    //页面渲染后,用于资源清理,在controller后执行,再异常情况下也会执行
+    /**
+     * 页面渲染后,用于资源清理,在controller后执行,再异常情况下也会执
+     * @param request
+     * @param response
+     * @param handler
+     * @param ex
+     * @throws Exception
+     */
     @Override
     public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) throws Exception {
         String userId = request.getHeader("userId");
