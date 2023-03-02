@@ -4,9 +4,10 @@ import com.alibaba.fastjson.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.heima.common.aliyun.GreenImageScan;
+import com.heima.common.aliyun.GreenTextScan;
 import com.heima.common.constants.WmNewsConstants;
 import com.heima.common.exceptionHandle.CustomException;
 import com.heima.feign.article.ArticleFeignClient;
@@ -29,8 +30,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletRequestWrapper;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -55,6 +54,10 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
     WmUserMapper wmUserMapper;
     @Resource
     ArticleFeignClient articleFeignClient;
+    @Resource
+    private GreenTextScan greenTextScan;
+    @Resource
+    private GreenImageScan greenImageScan;
 
     /**
      * 分页
@@ -76,6 +79,8 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
         lqw.eq(dto.getChannelId()!=null,WmNews::getChannelId,dto.getChannelId());
         //默认用户id
         lqw.eq(WmNews::getUserId,UserThreadLocalUtils.get());
+        //是否上架或下架
+        lqw.eq(WmNews::getEnable,1);
         //时间范围查询
         if(dto.getBeginPubDate()!=null&&dto.getEndPubDate()!=null){
             lqw.between(WmNews::getPublishTime,dto.getBeginPubDate(),dto.getEndPubDate());
@@ -105,30 +110,30 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
             wmNews.setImages(images);
         }
         //2.封面类型为自动,设置type为null
+        List<String> image = new ArrayList<>();
         if(dto.getType().equals((short)-1)){
             wmNews.setType(null);
+            List<Map> maps = JSON.parseArray(wmNews.getContent(), Map.class);
+            maps.forEach(map->{
+                if("image".equals(map.get("type"))){
+                    image.add(map.get("value").toString());
+                }
+            });
+            String images = StringUtils.join(image, ",");
+            wmNews.setImages(images);
         }
-        //3.保存到news表中
+        //3.判断dto是否携带id,未携带保存到news表中,携带修改
         saveOrUpdateWmNews(wmNews);
         //4.如果是草稿,结束当前方法
         if(dto.getStatus().equals(WmNews.Status.NORMAL.getCode())){
             return ResponseResult.okResult(AppHttpCodeEnum.SUCCESS);
         }
-        //5.提交审核,保存内容图片与素材的关系
-        //5.1获取内容图片信息
-        List<Map> maps = JSON.parseArray(wmNews.getContent(), Map.class);
-        List<String> image = new ArrayList<>();
-        maps.forEach(map->{
-            if("image".equals(map.get("type"))){
-                image.add(map.get("value").toString());
-            }
-        });
-        //6.建立文章内容图片与素材库关系
+        //5.建立文章内容图片与素材库关系
         saveRelationInfoContent(dto,image,wmNews);
-        //6.1 建立文章封面图片与素材库关系
+        //6 建立文章封面图片与素材库关系
         saveRelationInfo(dto,image,wmNews);
-        //7.调用自动审核方法
-        autoScanWmNews(wmNews.getId());
+        //7 调用自动审核方法
+        autoScanWmNews(wmNews);
         return ResponseResult.okResult(AppHttpCodeEnum.SUCCESS);
     }
 
@@ -223,19 +228,20 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
     public ResponseResult downOrUp(WmNews wmNews) {
         UpdateWrapper<WmNews> uw = new UpdateWrapper<>();
         uw.eq(wmNews.getId()!=null,"id",wmNews.getId());
-        uw.set(wmNews.getEnable()!=null,"enable",wmNews.getEnable());
+        uw.set(wmNews.getEnable()!=null,"status",0);
+        this.update(uw);
         return ResponseResult.okResult(AppHttpCodeEnum.SUCCESS);
     }
 
     /**
      * 自媒体文章审核
-     * @param id 自媒体文章id
+     * @param wm
      */
     @Async
     @Override
-    public void autoScanWmNews(Integer id) {
+    public void autoScanWmNews(WmNews wm) {
         //1.查询自媒体文章
-        WmNews wmNews = newsMapper.selectById(id);
+        WmNews wmNews = newsMapper.selectById(wm.getId());
         if(wmNews==null){
             throw new RuntimeException("文章不存在");
         }
@@ -248,11 +254,12 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
                 return;
             };
             //审核文档
-            if(!moderationText(wmNews.getContent(),wmNews)){
+            if(!moderationText((String) map.get("content"),wmNews)){
                 return;
             }
             //远程调用article保存接口
             ResponseResult result = saveArticle(wmNews);
+            System.out.println(result.getErrorMessage());
             if(result.getCode()!=200){
                 throw new CustomException(AppHttpCodeEnum.SERVER_ERROR);
             }
@@ -263,7 +270,6 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
             wmNews.setArticleId(articleId);
             updateWmNews(wmNews, (short) 9,"审核成功");
         }
-
     }
     /**
      * 保存文章到服务端
@@ -279,13 +285,13 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
         if(wmChannel!=null){
             dto.setChannelName(wmChannel.getName());
         }
-        //作者名字,与Id
-        if(wmNews.getArticleId()!=null){
-            dto.setAuthorId(wmNews.getArticleId());
-        }
-        //设置用户id
         dto.setWmUserId(wmNews.getUserId().longValue());
         WmUser wmUser = wmUserMapper.selectById(wmNews.getUserId());
+        //作者名字,与Id
+        if(wmUser.getApAuthorId()!=null){
+            dto.setAuthorId(wmUser.getApAuthorId());
+        }
+        //设置用户id
         if(wmUser!=null){
             dto.setAuthorName(wmUser.getName());
         }
@@ -306,6 +312,7 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
     private Map<String,Object> getImageOrText(WmNews wmNews){
         //存储,纯文本内容
         StringBuilder sb = new StringBuilder();
+        sb.append(wmNews.getTitle());
         //存粹,图片地址
         List<String> images = new ArrayList<>();
         Map<String,Object> resultMap = new HashMap<>();
@@ -327,7 +334,7 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
             String[] split = wmNews.getImages().split(",");
             images.addAll(Arrays.asList(split));
         }
-        resultMap.put("content",sb);
+        resultMap.put("content",sb.toString());
         resultMap.put("images",images);
         return resultMap;
     }
@@ -366,11 +373,12 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
         boolean flag=true;
         //标题跟内容长度为0,直接返回
         if(content.length()==0&&wmNews.getTitle().length()==0){
-            return flag;
+            return true;
         }
         //审核文章
         try {
-        Map<String, Object> map = textScan(content);
+        Map map = greenTextScan.greeTextScan(content);
+            System.out.println(JSON.toJSONString(map));
         if(map!=null){
             //block代表审核失败
             if("block".equals(map.get("suggestion"))){
@@ -397,7 +405,7 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
     public boolean moderationImages(List<String> images,WmNews wmNews){
         boolean flag = true;
         if(images==null||images.size()==0){
-                flag=false;
+                return true;
         }
         //图片去重
         List<String> imageList = images.stream().distinct().collect(Collectors.toList());
@@ -408,7 +416,8 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
         }
         //审核图片
         try {
-            Map<String, Object> map = imageScan(imageList);
+            Map map = greenImageScan.imageScan(list);
+
             if(map != null){
                 //审核失败
                 if("block".equals(map.get("suggestion"))){
@@ -421,10 +430,11 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
                     updateWmNews(wmNews, (short) 3, "无法自动识别图片是否违规");
                 }
             }
-            return flag;
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            flag = false;
+            e.printStackTrace();
         }
+        return flag;
     }
 
     /**

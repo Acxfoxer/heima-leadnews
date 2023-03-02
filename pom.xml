@@ -45,6 +45,7 @@
         <swagger.version>3.0.0</swagger.version>
         <knife4j.version>3.0.3</knife4j.version>
         <minio.version>8.4.3</minio.version>
+        <hystrix.version>2.2.10.RELEASE</hystrix.version>
     </properties>
     <dependencies>
         <!--lombok-->
@@ -158,10 +159,16 @@
                 <artifactId>mybatis-spring</artifactId>
                 <version>2.0.7</version>
             </dependency>
+            <!--minio-->
             <dependency>
                 <groupId>io.minio</groupId>
                 <artifactId>minio</artifactId>
                 <version>${minio.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-netflix-hystrix</artifactId>
+                <version>${hystrix.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

@@ -2,4 +2,6 @@
 org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
   com.heima.common.exceptionHandle.ExceptionHandle,\
   com.heima.common.config.MvcConfig,\
-  com.heima.common.config.SwaggerConfig
+  com.heima.common.config.SwaggerConfig,\
+  com.heima.common.aliyun.GreenImageScan,\
+  com.heima.common.aliyun.GreenTextScan

@@ -48,12 +48,10 @@ public class AuthorizeFilter implements Ordered, GlobalFilter {
             if(result==0||result==-1){
                 //转发用户信息
                 String userId = claimsBody.get("id").toString();
-                System.out.println(userId);
                 //构建请求
                 ServerHttpRequest serverHttpRequest = request.mutate()
                         .header("userId",userId).build();
                 ServerWebExchange webExchange = exchange.mutate().request(serverHttpRequest).build();
-                log.info("转发成功");
                 //放行请求
                 return chain.filter(webExchange);
             }
@@ -65,7 +63,6 @@ public class AuthorizeFilter implements Ordered, GlobalFilter {
         //6.放行
         return chain.filter(exchange);
     }
-
     /**
      * 优先级设置
      * @return 返回设置优先级

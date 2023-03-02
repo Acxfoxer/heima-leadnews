@@ -18,3 +18,22 @@ spring:
     import:
       - nacos:${spring.application.name}-${spring.profiles.active}.${spring.cloud.nacos.config.file-extension}?refresh=true
       - nacos:common.yml
+#开启熔断
+feign:
+  #  httpclient:
+  #    enabled: true
+  okhttp:
+    enabled: true
+  httpclient:
+    enabled: false
+  client:
+    config:
+      default:
+        logger-level: FULL
+        connect-timeout: 2000
+        read-timeout: 2000
+  circuitbreaker:
+    group:
+      enabled: true
+
+

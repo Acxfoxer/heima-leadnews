@@ -20,5 +20,10 @@
             <groupId>com.heima</groupId>
             <artifactId>heima-leadnews-feign-api</artifactId>
         </dependency>
+        <!--openfeign 服务降级,需引入hystrix依赖-->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-netflix-hystrix</artifactId>
+        </dependency>
     </dependencies>
 </project>

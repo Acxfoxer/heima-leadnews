@@ -27,6 +27,12 @@
         <dependency>
             <groupId>com.heima</groupId>
             <artifactId>heima-leadnews-common</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>com.alibaba.fastjson2</groupId>
+                    <artifactId>fastjson2</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <!--mysql 驱动-->
         <dependency>

@@ -120,9 +120,12 @@ public class ApArticleServiceImpl extends ServiceImpl<ApArticleMapper, ApArticle
      */
     @Override
     public ResponseResult saveOrUpdate(@NotNull ArticleDto dto) {
+        ApArticle apArticle = new ApArticle();
+        ApArticleContent content = new ApArticleContent();
         //1.根据名字查询ap_author是否存在,不存在添加
-        ApAuthor apAuthor = apAuthorMapper.selectOne(new LambdaQueryWrapper<ApAuthor>()
-                .eq(ApAuthor::getName, dto.getAuthorName()));
+        LambdaQueryWrapper<ApAuthor> lq= new LambdaQueryWrapper<ApAuthor>();
+        lq.eq(ApAuthor::getName, dto.getAuthorName());
+        ApAuthor apAuthor = apAuthorMapper.selectOne(lq);
         ApAuthor author = new ApAuthor();
         if(apAuthor==null){
             author.setCreatedTime(new Date());
@@ -131,17 +134,15 @@ public class ApArticleServiceImpl extends ServiceImpl<ApArticleMapper, ApArticle
             author.setType((short) 2);
             author.setWmUserId(dto.getWmUserId());
             apAuthorMapper.insert(author);
-            author.setUserId(author.getId());
+            Short id = author.getId();
+            author.setUserId(id);
+            apArticle.setAuthorId(id.longValue());
             apAuthorMapper.updateById(author);
         }
         //2.保存文章信息 ap_article
-        ApArticle apArticle = new ApArticle();
-        ApArticleContent content = new ApArticleContent();
         //不带id表示新增,带id表示修改
         if(dto.getId()==null){
             BeanUtils.copyProperties(dto,apArticle);
-            String apAuthorId = author.getId().toString();
-            apArticle.setAuthorId(Long.valueOf(apAuthorId));
             this.save(apArticle);
             //2.保存文章内容 ap_article_content
             content.setArticleId(apArticle.getId());
@@ -157,6 +158,10 @@ public class ApArticleServiceImpl extends ServiceImpl<ApArticleMapper, ApArticle
             apArticleConfigMapper.insert(apArticleConfig);
         }else {
             BeanUtils.copyProperties(dto,apArticle);
+            if(dto.getAuthorId()==null){
+                ApAuthor author1 = apAuthorMapper.selectOne(lq);
+                apArticle.setAuthorId(Long.valueOf(author1.getId().toString()));
+            }
             //修改文章
             this.updateById(apArticle);
             //更新文章内容
