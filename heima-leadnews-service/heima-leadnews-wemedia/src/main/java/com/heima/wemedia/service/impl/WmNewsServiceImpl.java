@@ -74,6 +74,8 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
         lqw.like(dto.getKeyword()!=null,WmNews::getTitle,dto.getKeyword());
         //根据频道查询
         lqw.eq(dto.getChannelId()!=null,WmNews::getChannelId,dto.getChannelId());
+        //默认用户id
+        lqw.eq(WmNews::getUserId,UserThreadLocalUtils.get());
         //时间范围查询
         if(dto.getBeginPubDate()!=null&&dto.getEndPubDate()!=null){
             lqw.between(WmNews::getPublishTime,dto.getBeginPubDate(),dto.getEndPubDate());
@@ -257,6 +259,7 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
             //审核成功,更新后台文章数据
             //获取文章id
             Long articleId = (Long) result.getData();
+            wmNews.setPublishTime(new Date());
             wmNews.setArticleId(articleId);
             updateWmNews(wmNews, (short) 9,"审核成功");
         }
@@ -277,7 +280,11 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
             dto.setChannelName(wmChannel.getName());
         }
         //作者名字,与Id
-        dto.setAuthorId(wmNews.getUserId().longValue());
+        if(wmNews.getArticleId()!=null){
+            dto.setAuthorId(wmNews.getArticleId());
+        }
+        //设置用户id
+        dto.setWmUserId(wmNews.getUserId().longValue());
         WmUser wmUser = wmUserMapper.selectById(wmNews.getUserId());
         if(wmUser!=null){
             dto.setAuthorName(wmUser.getName());
@@ -287,6 +294,7 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
             dto.setId(wmNews.getArticleId());
         }
         dto.setCreatedTime(new Date());
+        dto.setPublishTime(new Date());
         ResponseResult result = articleFeignClient.saveOrUpdate(dto);
         return result;
     }

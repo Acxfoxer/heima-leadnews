@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.heima.article.mapper.ApArticleConfigMapper;
 import com.heima.article.mapper.ApArticleContentMapper;
 import com.heima.article.mapper.ApArticleMapper;
+import com.heima.article.mapper.ApAuthorMapper;
 import com.heima.article.service.ApArticleService;
 import com.heima.common.constants.ArticleLoadMode;
 import com.heima.common.exceptionHandle.CustomException;
@@ -15,6 +16,7 @@ import com.heima.model.article.dto.ArticleHomeDto;
 import com.heima.model.article.pojos.ApArticle;
 import com.heima.model.article.pojos.ApArticleConfig;
 import com.heima.model.article.pojos.ApArticleContent;
+import com.heima.model.article.pojos.ApAuthor;
 import com.heima.model.common.dtos.ResponseResult;
 import freemarker.template.Configuration;
 import freemarker.template.Template;
@@ -51,6 +53,8 @@ public class ApArticleServiceImpl extends ServiceImpl<ApArticleMapper, ApArticle
     private Configuration configuration;
     @Resource
     private ApArticleConfigMapper apArticleConfigMapper;
+    @Resource
+    private ApAuthorMapper apAuthorMapper;
 
     private final static short MAX_PAGE_SIZE = 50;
 
@@ -116,11 +120,28 @@ public class ApArticleServiceImpl extends ServiceImpl<ApArticleMapper, ApArticle
      */
     @Override
     public ResponseResult saveOrUpdate(@NotNull ArticleDto dto) {
-        //1.保存文章信息 ap_article
+        //1.根据名字查询ap_author是否存在,不存在添加
+        ApAuthor apAuthor = apAuthorMapper.selectOne(new LambdaQueryWrapper<ApAuthor>()
+                .eq(ApAuthor::getName, dto.getAuthorName()));
+        ApAuthor author = new ApAuthor();
+        if(apAuthor==null){
+            author.setCreatedTime(new Date());
+            author.setName(dto.getAuthorName());
+            //用户类别,默认是2
+            author.setType((short) 2);
+            author.setWmUserId(dto.getWmUserId());
+            apAuthorMapper.insert(author);
+            author.setUserId(author.getId());
+            apAuthorMapper.updateById(author);
+        }
+        //2.保存文章信息 ap_article
         ApArticle apArticle = new ApArticle();
         ApArticleContent content = new ApArticleContent();
+        //不带id表示新增,带id表示修改
         if(dto.getId()==null){
             BeanUtils.copyProperties(dto,apArticle);
+            String apAuthorId = author.getId().toString();
+            apArticle.setAuthorId(Long.valueOf(apAuthorId));
             this.save(apArticle);
             //2.保存文章内容 ap_article_content
             content.setArticleId(apArticle.getId());

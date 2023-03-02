@@ -6,6 +6,9 @@ import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 import springfox.documentation.swagger2.annotations.EnableSwagger2WebMvc;
 
+/**
+ * @author 18727
+ */
 @SpringBootApplication
 @EnableDiscoveryClient
 @EnableSwagger2WebMvc

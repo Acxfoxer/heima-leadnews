@@ -1,5 +1,6 @@
 package com.heima.wemedia.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.heima.model.common.dtos.ResponseResult;
@@ -13,6 +14,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.util.DigestUtils;
 
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -38,8 +40,13 @@ public class WmUserServiceImpl extends ServiceImpl<WmUserMapper, WmUser> impleme
         String pswd = dto.getPassword();
         pswd = DigestUtils.md5DigestAsHex((pswd + salt).getBytes());
         if(pswd.equals(wmUser.getPassword())){
+            //登录成功,修改登陆时间
+            UpdateWrapper<WmUser> uw = new UpdateWrapper<>();
+            uw.eq("id",wmUser.getId());
+            uw.set("login_time",new Date());
+            this.update(uw);
             //4.返回数据  jwt
-            Map<String,Object> map  = new HashMap<>();
+            Map<String,Object> map  = new HashMap<>(20);
             map.put("token", AppJwtUtil.getToken(wmUser.getId().longValue()));
             wmUser.setSalt("");
             wmUser.setPassword("");

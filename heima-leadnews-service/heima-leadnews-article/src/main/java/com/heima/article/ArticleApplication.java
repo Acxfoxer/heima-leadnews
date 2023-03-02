@@ -8,6 +8,9 @@ import org.springframework.cloud.openfeign.EnableFeignClients;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 
 
+/**
+ * @author 18727
+ */
 @SpringBootApplication
 @EnableDiscoveryClient
 @MapperScan("com.heima.article.mapper")
