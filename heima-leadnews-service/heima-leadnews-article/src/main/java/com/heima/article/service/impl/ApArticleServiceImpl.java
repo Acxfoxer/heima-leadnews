@@ -22,7 +22,6 @@ import freemarker.template.Configuration;
 import freemarker.template.Template;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -99,11 +98,13 @@ public class ApArticleServiceImpl extends ServiceImpl<ApArticleMapper, ApArticle
                 //5.2查询apArticleContent,构造条件
                 lqw.eq(ApArticleContent::getArticleId, apArticle.getId());
                 ApArticleContent content = contentMapper.selectOne(lqw);
-                //5.3 上传静态页面到minIO
-                String staticUrl = createStaticUrl(content);
-                //5.4设置staticUrl
-                if (staticUrl != null) {
-                    apArticle.setStaticUrl(staticUrl);
+                if(content!=null){
+                    //5.3 上传静态页面到minIO
+                    String staticUrl = createStaticUrl(apArticle,content.getContent());
+                    //5.4设置staticUrl
+                    if (staticUrl != null) {
+                        apArticle.setStaticUrl(staticUrl);
+                    }
                 }
                 apArticleMapper.updateById(apArticle);
             }
@@ -114,7 +115,6 @@ public class ApArticleServiceImpl extends ServiceImpl<ApArticleMapper, ApArticle
 
     /**
      * 添加文章
-     *
      * @param dto
      * @return
      */
@@ -162,7 +162,9 @@ public class ApArticleServiceImpl extends ServiceImpl<ApArticleMapper, ApArticle
                 ApAuthor author1 = apAuthorMapper.selectOne(lq);
                 apArticle.setAuthorId(Long.valueOf(author1.getId().toString()));
             }
-            //修改文章
+            //获取静态页面路径
+            String staticUrl = createStaticUrl(apArticle, dto.getContent());
+            apArticle.setStaticUrl(staticUrl);
             this.updateById(apArticle);
             //更新文章内容
             content.setContent(dto.getContent());
@@ -180,20 +182,20 @@ public class ApArticleServiceImpl extends ServiceImpl<ApArticleMapper, ApArticle
      * @return  返回页面访问路径
      * @throws Exception 抛出异常
      */
-    public String createStaticUrl(ApArticleContent content){
+    public String createStaticUrl(ApArticle article, String content){
         //1.获取文章内容
-        if(content != null && StringUtils.isNotBlank(content.getContent())){
+        if(StringUtils.isNotBlank(content)){
             //2.文章内容通过freemarker生成html文件
             StringWriter out = new StringWriter();
             Template template = null;
             try {
                 template = configuration.getTemplate("article.ftl");
                 Map<String, Object> params = new HashMap<>();
-                params.put("content", JSONArray.parseArray(content.getContent()));
+                params.put("content", JSONArray.parseArray(content));
                 template.process(params,out);
                 InputStream is = new ByteArrayInputStream(out.toString().getBytes());
                 //3.通过上传html文件到minio中,获取访问路径
-                return fileStorageService.uploadHtmlFile("", content.getArticleId() + ".html", is);
+                return fileStorageService.uploadHtmlFile("", article.getId() + ".html", is);
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }

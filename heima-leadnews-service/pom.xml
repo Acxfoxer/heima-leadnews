@@ -14,6 +14,7 @@
         <module>heima-leadnews-user</module>
         <module>heima-leadnews-article</module>
         <module>heima-leadnews-wemedia</module>
+        <module>heima-leadnews-schedule</module>
     </modules>
 
     <artifactId>heima-leadnews-service</artifactId>
@@ -70,14 +71,14 @@
         </dependency>
         <!--解决LoadBalancerCacheManager not available, returning delegate without caching-->
         <!--minio上传模块-->
-        <dependency>
-            <groupId>com.heima</groupId>
-            <artifactId>heima-file-starter</artifactId>
-            <version>1.0-SNAPSHOT</version>
-        </dependency>
-        <dependency>
-            <groupId>com.heima</groupId>
-            <artifactId>heima-leadnews-utils</artifactId>
-        </dependency>
     </dependencies>
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>com.heima</groupId>
+                <artifactId>heima-file-starter</artifactId>
+                <version>1.0-SNAPSHOT</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 </project>

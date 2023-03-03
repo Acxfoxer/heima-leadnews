@@ -1,6 +1,5 @@
 package com.heima.common.interceptor;
 
-import com.heima.model.media.pojos.WmUser;
 import com.heima.utils.common.UserThreadLocalUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -9,7 +8,6 @@ import org.springframework.web.servlet.ModelAndView;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-import java.util.Enumeration;
 import java.util.Optional;
 
 
@@ -33,20 +31,20 @@ public class MyInterceptor implements HandlerInterceptor {
         if(swaggerStr.equals(handler.getClass().getName())){
             return true;
         }
-        Enumeration<String> token = request.getHeaders("token");
-        if(!token.hasMoreElements()){
+        String token = request.getHeader("token");
+        if(token==null){
             log.warn("未登录,无法访问!,请求路径{}",request.getRequestURI());
             response.setStatus(403);
             return false;
         }
         String mediaLoginUrl = "/article";
-        if(!request.getRequestURI().contains(mediaLoginUrl)){
+        String userLoginUrl = "/login_auth";
+        if(!request.getRequestURI().contains(mediaLoginUrl)&&!request.getRequestURI().contains(userLoginUrl)){
             String userId = request.getHeader("userId");
             System.out.println(userId);
             //把用户id存入ThreadLocal中
             UserThreadLocalUtils.setUserID(Long.valueOf(userId));
             log.info("wmTokenFilter设置用户Id到ThreadLocal中...");
-
         }
         return true;
     }

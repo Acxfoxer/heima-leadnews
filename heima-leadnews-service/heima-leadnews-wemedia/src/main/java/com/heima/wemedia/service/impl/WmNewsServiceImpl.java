@@ -8,9 +8,14 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.heima.common.aliyun.GreenImageScan;
 import com.heima.common.aliyun.GreenTextScan;
+import com.heima.common.constants.MqConstants;
+import com.heima.common.constants.ScheduleConstants;
 import com.heima.common.constants.WmNewsConstants;
 import com.heima.common.exceptionHandle.CustomException;
+import com.heima.common.springutil.SpringUtil;
+import com.heima.common.tess4j.Tess4jClient;
 import com.heima.feign.article.ArticleFeignClient;
+import com.heima.feign.article.TaskInfoClient;
 import com.heima.minio.service.FileStorageService;
 import com.heima.model.article.dto.ArticleDto;
 import com.heima.model.common.dtos.PageResponseResult;
@@ -19,17 +24,32 @@ import com.heima.model.common.enums.AppHttpCodeEnum;
 import com.heima.model.media.dto.WmNewsDto;
 import com.heima.model.media.dto.WmNewsPageReqDto;
 import com.heima.model.media.pojos.*;
+import com.heima.model.schedule.pojos.Taskinfo;
+import com.heima.utils.common.SensitiveWordUtil;
 import com.heima.utils.common.UserThreadLocalUtils;
 import com.heima.wemedia.mapper.*;
 import com.heima.wemedia.service.WmNewsService;
+import net.sourceforge.tess4j.TesseractException;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.amqp.AmqpException;
+import org.springframework.amqp.core.Message;
+import org.springframework.amqp.core.MessageBuilder;
+import org.springframework.amqp.core.MessageDeliveryMode;
+import org.springframework.amqp.core.MessagePostProcessor;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.BeanUtils;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.scheduling.annotation.Async;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import javax.annotation.Resource;
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -40,17 +60,17 @@ import java.util.stream.Collectors;
 @Service
 @Transactional(rollbackFor = {CustomException.class})
 public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> implements WmNewsService {
-    @Autowired
+    @Resource
     WmNewsMapper newsMapper;
-    @Autowired
+    @Resource
     WmNewsMaterialMapper wmNewsMaterialMapper;
-    @Autowired
+    @Resource
     WmChannelMapper wmChannelMapper;
-    @Autowired
+    @Resource
     WmMaterialMapper wmMaterialMapper;
-    @Autowired
+    @Resource
     FileStorageService fileStorageService;
-    @Autowired
+    @Resource
     WmUserMapper wmUserMapper;
     @Resource
     ArticleFeignClient articleFeignClient;
@@ -58,6 +78,16 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
     private GreenTextScan greenTextScan;
     @Resource
     private GreenImageScan greenImageScan;
+    @Resource
+    private WmSensitiveMapper wmSensitiveMapper;
+    @Resource
+    private Tess4jClient tess4jClient;
+    @Resource
+    private SpringUtil util;
+    @Resource(name ="LeeAsyncExecutor")
+    ThreadPoolTaskExecutor threadPoolTaskExecutor;
+    @Resource
+    TaskInfoClient client;
 
     /**
      * 分页
@@ -103,7 +133,7 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
         }
         //1.保存或修改文章
         WmNews wmNews = new WmNews();
-        BeanUtils.copyProperties(dto,wmNews,"images");
+        BeanUtils.copyProperties(dto,wmNews);
         //2.分割图片路径
         if(dto.getImages()!=null&&dto.getImages().size()>0){
             String images = StringUtils.join(dto.getImages(), ",");
@@ -133,18 +163,49 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
         //6 建立文章封面图片与素材库关系
         saveRelationInfo(dto,image,wmNews);
         //7 调用自动审核方法
-        autoScanWmNews(wmNews);
+        //7.1调用spring工具类,获取本类的代理对象
+        WmNewsServiceImpl wmNewsServiceBean = SpringUtil.getBean(WmNewsServiceImpl.class);
+        /*//7.2异步调用要考虑请求头问题
+        //7.3获取当前线程请求头信息(解决Feign异步调用丢失请求头问题)
+        ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder
+                .getRequestAttributes();
+        //7.4在ServeletRequestAttributes中设置各请求头，作用域为session
+        attributes.setAttribute("token",attributes.getRequest().getHeader("token"),1);
+        attributes.setAttribute("userId",attributes.getRequest().getHeader("userId"),2);
+        7.5异步调用.当前线程方法设置请求头到异步请求
+        threadPoolTaskExecutor.execute(()->{
+            //异步调用前设置请求头
+            RequestContextHolder.setRequestAttributes(attributes, true);
+            //异步调用feign接口
+            wmNewsServiceBean.autoScanWmNews(Long.valueOf(wmNews.getId()));
+        });*/
+        addTack(wmNews);
         return ResponseResult.okResult(AppHttpCodeEnum.SUCCESS);
     }
 
-
+    public void addTack(WmNews wmNews){
+        Taskinfo taskinfo = new Taskinfo();
+        if(wmNews.getPublishTime()==null){
+            taskinfo.setExecuteTime(new Date());
+        }else {
+            taskinfo.setExecuteTime(wmNews.getPublishTime());
+        }
+        taskinfo.setParameters(JSON.toJSONString(wmNews));
+        taskinfo.setTaskType(1);
+        taskinfo.setMqRoutingKey(MqConstants.DELAY_KEY);
+        taskinfo.setVersion(1);
+        taskinfo.setStatus(ScheduleConstants.SCHEDULED);
+        taskinfo.setMqExchange(MqConstants.DELAY_EXCHANGE);
+        taskinfo.setPriority(1);
+        client.addTask(taskinfo);
+    }
     /**
      * 封面图片与素材建立联系
      * @param dto
      * @param image
      * @param wmNews
      */
-    private void saveRelationInfo(WmNewsDto dto,List<String> image,WmNews wmNews){
+    public void saveRelationInfo(WmNewsDto dto,List<String> image,WmNews wmNews){
         List<String> images = dto.getImages();
         //如果自动,则重新设置news的image属性
         if(dto.getType().equals((short)-1)){
@@ -179,7 +240,7 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
      * @param images
      * @param type
      */
-    private void saveRelationship(WmNews wmNews, List<String> images,Short type) {
+    public void saveRelationship(WmNews wmNews, List<String> images,Short type) {
         if(images!=null&&images.size()>0){
             //根据图片查询素材id
             LambdaQueryWrapper<WmMaterial> lqw = new LambdaQueryWrapper<>();
@@ -212,7 +273,7 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
      * @param image
      * @param wmNews
      */
-    private void saveRelationInfoContent(WmNewsDto dto,List<String> image,WmNews wmNews){
+    public void saveRelationInfoContent(WmNewsDto dto,List<String> image,WmNews wmNews){
         //内容图片关联关系为0
         Short type = 0;
         //建立素材跟图片关联信息
@@ -233,38 +294,49 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
         return ResponseResult.okResult(AppHttpCodeEnum.SUCCESS);
     }
 
+
     /**
      * 自媒体文章审核
-     * @param wm
+     * 本类调用本类异步方法,必须实现public方法,手动获取spring bean
+     * @Async 基于AOP思想,调用者必须动态代理调用该方法
+     * @param id  传递新闻id
+     * @param
      */
-    @Async
+
     @Override
-    public void autoScanWmNews(WmNews wm) {
+    public void autoScanWmNews(Long id) {
         //1.查询自媒体文章
-        WmNews wmNews = newsMapper.selectById(wm.getId());
+        WmNews wmNews = newsMapper.selectById(id);
         if(wmNews==null){
             throw new RuntimeException("文章不存在");
         }
-        //判断文章状态是不是处于正在提交的状态中
+        //2.判断文章状态是不是处于正在提交的状态中
         if(wmNews.getStatus().equals(WmNews.Status.SUBMIT.getCode())){
-            //从内容中获取纯文本,跟图片
+            //2.1从内容中获取纯文本,跟图片
             Map<String, Object> map = getImageOrText(wmNews);
-            //审核图片,审核不通过,返回
-            if(!moderationImages((List<String>) map.get("images"), wmNews)){
-                return;
-            };
-            //审核文档
-            if(!moderationText((String) map.get("content"),wmNews)){
+            List<String> images = (List<String>) map.get("images");
+            images.add(wmNews.getImages());
+            String content = (String) map.get("content");
+            //2.2自有敏感词库文章审核
+            if(!moderationSensitiveScan(content,wmNews)){
                 return;
             }
-            //远程调用article保存接口
+            //2.3审核图片,审核不通过,返回
+            if(!moderationImages(images, wmNews)){
+                return;
+            };
+            //2.4审核文档
+            if(!moderationText(content,wmNews)){
+                return;
+            }
             ResponseResult result = saveArticle(wmNews);
-            System.out.println(result.getErrorMessage());
+            System.out.printf("看是否触发服务降级:{}",result.getErrorMessage());
+            log.warn(result.getErrorMessage());
             if(result.getCode()!=200){
                 throw new CustomException(AppHttpCodeEnum.SERVER_ERROR);
             }
-            //审核成功,更新后台文章数据
-            //获取文章id
+            //3审核成功,更新后台文章数据
+            //3.1获取文章id
             Long articleId = (Long) result.getData();
             wmNews.setPublishTime(new Date());
             wmNews.setArticleId(articleId);
@@ -276,7 +348,7 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
      * @param wmNews
      * @return
      */
-    private ResponseResult saveArticle(WmNews wmNews){
+    public ResponseResult saveArticle(WmNews wmNews){
         ArticleDto dto = new ArticleDto();
         BeanUtils.copyProperties(wmNews,dto);
         dto.setLayout(wmNews.getType());
@@ -291,8 +363,8 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
         if(wmUser.getApAuthorId()!=null){
             dto.setAuthorId(wmUser.getApAuthorId());
         }
-        //设置用户id
-        if(wmUser!=null){
+        //设置用户姓名
+        if(wmUser.getName()!=null){
             dto.setAuthorName(wmUser.getName());
         }
         //文章id
@@ -301,6 +373,7 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
         }
         dto.setCreatedTime(new Date());
         dto.setPublishTime(new Date());
+        //7.4在ServeletRequestAttributes中设置各请求头，作用域为session
         ResponseResult result = articleFeignClient.saveOrUpdate(dto);
         return result;
     }
@@ -309,7 +382,7 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
      * @param wmNews
      * @return
      */
-    private Map<String,Object> getImageOrText(WmNews wmNews){
+    public Map<String,Object> getImageOrText(WmNews wmNews){
         //存储,纯文本内容
         StringBuilder sb = new StringBuilder();
         sb.append(wmNews.getTitle());
@@ -342,7 +415,7 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
      * 保存或修改文章
      * @param wmNews
      */
-    private void saveOrUpdateWmNews(WmNews wmNews) {
+    public void saveOrUpdateWmNews(WmNews wmNews) {
         //补全属性
         wmNews.setUserId(Math.toIntExact(UserThreadLocalUtils.get()));
         wmNews.setCreatedTime(new Date());
@@ -364,7 +437,6 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
     }
 
 
-
     /**
      * 调用阿里云文章审核接口
      * @param wmNews
@@ -378,7 +450,6 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
         //审核文章
         try {
         Map map = greenTextScan.greeTextScan(content);
-            System.out.println(JSON.toJSONString(map));
         if(map!=null){
             //block代表审核失败
             if("block".equals(map.get("suggestion"))){
@@ -410,13 +481,31 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
         //图片去重
         List<String> imageList = images.stream().distinct().collect(Collectors.toList());
         List<byte[]> list = new ArrayList<>();
+        try {
         for (String s : imageList) {
             byte[] bytes = fileStorageService.downLoadFile(s);
+            //从byte[]转换为butteredImage
+            ByteArrayInputStream inputStream = new ByteArrayInputStream(bytes);
+            //获得字节输出缓冲流
+            BufferedImage read = ImageIO.read(inputStream);
+            //获取图片内容
+            String content = tess4jClient.toOCR(read);
+            //铭感词识别
+            if(!moderationSensitiveScan(content, wmNews)){
+                return false;
+            }
             list.add(bytes);
+        }
+        }
+        catch (IOException e) {
+            throw new RuntimeException(e);
+        } catch (TesseractException e) {
+            throw new RuntimeException(e);
         }
         //审核图片
         try {
             Map map = greenImageScan.imageScan(list);
+            //OCR识别图片
 
             if(map != null){
                 //审核失败
@@ -438,12 +527,34 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
     }
 
     /**
+     * 自管理敏感词审核
+     * @param content
+     * @param wmNews
+     * @return
+     */
+    public boolean moderationSensitiveScan(String content,WmNews wmNews){
+        boolean flag = true;
+        //获取所有铭感词
+        LambdaQueryWrapper<WmSensitive> lqw = new LambdaQueryWrapper<>();
+        List<WmSensitive> wmSensitives = wmSensitiveMapper.selectList(lqw.select(WmSensitive::getSensitives));
+        List<String> sensitiveList = wmSensitives.stream().map(WmSensitive::getSensitives).collect(Collectors.toList());
+        //初始化敏感词库,转变为Map形式
+        SensitiveWordUtil.initMap(sensitiveList);
+        Map<String, Integer> stringIntegerMap = SensitiveWordUtil.matchWords(content);
+        if(stringIntegerMap.size()>0){
+            //文章内容包含敏感词
+            updateWmNews(wmNews, (short) 2,"文章存在敏感词,请修改");
+            flag=false;
+        }
+        return flag;
+    }
+    /**
      * 更新 状态,原因
      * @param wmNews
      * @param status
      * @param str
      */
-    private void updateWmNews(WmNews wmNews, short status, String str) {
+    public void updateWmNews(WmNews wmNews, short status, String str) {
         wmNews.setReason(str);
         wmNews.setStatus(status);
         this.updateById(wmNews);
@@ -454,7 +565,7 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
      * @param imageList
      * @return
      */
-    private Map<String,Object> imageScan(List<String> imageList){
+    public Map<String,Object> imageScan(List<String> imageList){
         Map<String,Object> map = new HashMap<>();
         map.put("suggestion","pass");
         return map;
@@ -465,7 +576,7 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
      * @param content
      * @return
      */
-    private Map<String,Object> textScan(String content){
+    public Map<String,Object> textScan(String content){
         Map<String,Object> map = new HashMap<>();
         map.put("suggestion","pass");
         return map;

@@ -36,7 +36,7 @@
             and ag.is_delete =0
             and ag.is_down =0
             /*loadNew*/
-            <if test="dto.loaddir !=null and dto.loaddir==0">
+            <if test="dto.loaddir !=null and dto.loaddir==0" >
                 and ae.publish_time <![CDATA[>]]> #{dto.maxBehotTime}
             </if>
             /*loadMore*/

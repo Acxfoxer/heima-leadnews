@@ -2,6 +2,7 @@ package com.heima.utils.common;
 
 /**
  * 分片桶字段算法
+ * @author 18727
  */
 public class BurstUtils {
 

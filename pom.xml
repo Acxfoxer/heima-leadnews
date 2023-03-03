@@ -18,6 +18,7 @@
         <module>heima-leadnews-test</module>
         <module>heima-leadnews-utils</module>
         <module>heima-leadnews-basic</module>
+        <module>heima-redission-starter</module>
     </modules>
 
     <!-- 继承Spring boot工程 -->
@@ -165,10 +166,17 @@
                 <artifactId>minio</artifactId>
                 <version>${minio.version}</version>
             </dependency>
+            <!--hystrix-->
             <dependency>
                 <groupId>org.springframework.cloud</groupId>
                 <artifactId>spring-cloud-netflix-hystrix</artifactId>
                 <version>${hystrix.version}</version>
+            </dependency>
+            <!--tess4j-->
+            <dependency>
+                <groupId>net.sourceforge.tess4j</groupId>
+                <artifactId>tess4j</artifactId>
+                <version>5.6.0</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

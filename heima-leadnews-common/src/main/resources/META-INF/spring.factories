@@ -4,4 +4,6 @@ org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
   com.heima.common.config.MvcConfig,\
   com.heima.common.config.SwaggerConfig,\
   com.heima.common.aliyun.GreenImageScan,\
-  com.heima.common.aliyun.GreenTextScan
+  com.heima.common.aliyun.GreenTextScan,\
+  com.heima.common.tess4j.Tess4jClient,\
+  com.heima.common.springutil.SpringUtil

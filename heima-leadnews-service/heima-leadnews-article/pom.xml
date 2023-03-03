@@ -35,6 +35,10 @@
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-openfeign</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.heima</groupId>
+            <artifactId>heima-file-starter</artifactId>
+        </dependency>
     </dependencies>
 
 </project>

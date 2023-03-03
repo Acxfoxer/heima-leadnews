@@ -45,6 +45,7 @@ public class WmMaterialServiceImpl extends ServiceImpl<WmMaterialMapper, WmMater
     public PageResponseResult listByPage(WmMaterialDto dto) {
         //参数校验
         dto.checkParam();
+        dto.setSize(10);
         //构造条件
         IPage<WmMaterial> iPage = new Page<>(dto.getPage(),dto.getSize());
         LambdaQueryWrapper<WmMaterial> lqw = new LambdaQueryWrapper<>();

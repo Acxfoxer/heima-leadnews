@@ -1,10 +1,6 @@
 spring:
   application:
-    name: media-service
-  mvc:
-    #spring boot 高版本整合swagger报错解决
-    pathmatch:
-      matching-strategy: ant_path_matcher
+    name: schedule-service
   profiles:
     active: dev
   cloud:
@@ -24,18 +20,5 @@ spring:
     import:
       - nacos:${spring.application.name}-${spring.profiles.active}.${spring.cloud.nacos.config.file-extension}?refresh=true
       - nacos:common.yml
-#开启熔断
-feign:
-  #  httpclient:
-  #    enabled: true
-  client:
-    config:
-      default:
-        logger-level: FULL
-        connect-timeout: 2000
-        read-timeout: 2000
-  circuitbreaker:
-    group:
-      enabled: true
 
 
