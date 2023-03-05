@@ -22,6 +22,7 @@ import java.io.StringWriter;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @SpringBootTest
@@ -34,6 +35,8 @@ public class ArticleAppTest {
     private ApArticleService apArticleService;
     @Resource
     ApArticleContentMapper contentMapper;
+    @Autowired
+
     @Test
     public void createStaticUrlTest() throws Exception {
         //1.获取文章内容
@@ -59,5 +62,11 @@ public class ArticleAppTest {
         SimpleDateFormat sim = new SimpleDateFormat("yyyy-MM-dd HH:mm:dd");
         String format = sim.format(date);
         System.out.println(format);
+    }
+
+    @Test
+    public void insertEs(){
+        List<ApArticle> list = apArticleService.list();
+
     }
 }

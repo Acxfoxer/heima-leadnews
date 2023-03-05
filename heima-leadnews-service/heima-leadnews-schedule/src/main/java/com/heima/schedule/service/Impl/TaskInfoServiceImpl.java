@@ -39,13 +39,12 @@ public class TaskInfoServiceImpl extends ServiceImpl<TaskinfoMapper,Taskinfo> im
     @Override
     public ResponseResult addTask(Taskinfo taskinfo) {
         if(taskinfo!=null){
-            //任务入库
-            this.save(taskinfo);
         //获取未来五分钟时间
         Calendar calendar = Calendar.getInstance();
         calendar.add(Calendar.MINUTE,5);
         //大于则不发送消息
         if(taskinfo.getExecuteTime().after(calendar.getTime())){
+            this.save(taskinfo);
             return ResponseResult.okResult(AppHttpCodeEnum.SUCCESS);
         }
         Message message;
@@ -59,17 +58,6 @@ public class TaskInfoServiceImpl extends ServiceImpl<TaskinfoMapper,Taskinfo> im
                 .setHeader("x-delay", delayTime)
                 .setDeliveryMode(MessageDeliveryMode.PERSISTENT)
                 .build();
-        //获取请求上下文对象
-        /*ServletRequestAttributes requestAttributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
-        assert requestAttributes != null;
-        String token = requestAttributes.getRequest().getHeader("token");
-        String userId = requestAttributes.getRequest().getHeader("userId");
-        //设置请求头
-        MessagePostProcessor messagePostProcessor = message1 -> {
-            message1.getMessageProperties().setHeader("token",token);
-            message1.getMessageProperties().setHeader("userId",userId);
-            return message1;
-        };*/
         //发送消息
         template.convertAndSend(taskinfo.getMqExchange(),taskinfo.getMqRoutingKey(),message);
         }
@@ -118,6 +106,9 @@ public class TaskInfoServiceImpl extends ServiceImpl<TaskinfoMapper,Taskinfo> im
                     return message1;
                 };
                 template.convertAndSend(taskinfo.getMqExchange(),taskinfo.getMqRoutingKey(),msg,messagePostProcessor);
+                //修改状态
+                taskinfo.setStatus(ScheduleConstants.EXECUTED);
+                this.updateById(taskinfo);
             }
         }
     }

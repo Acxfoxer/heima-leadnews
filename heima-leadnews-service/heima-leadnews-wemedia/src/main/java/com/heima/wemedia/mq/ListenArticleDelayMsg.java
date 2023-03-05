@@ -43,13 +43,13 @@ public class ListenArticleDelayMsg {
         //获取请求上下文
         if(StringUtils.isNotBlank(taskId)){
             Taskinfo taskinfo = client.selectTaskById(Long.valueOf(taskId));
-            //判断任务状态是不是等于0,等于1表示已经被消费,不能在消费
-            if(taskinfo.getStatus()== ScheduleConstants.SCHEDULED){
+            //判断任务状态是不是等于1,等于1表示已经未消费
+            if(taskinfo.getStatus()== ScheduleConstants.EXECUTED){
                 WmNews wmNews = JSON.parseObject(taskinfo.getParameters(), WmNews.class);
                 //调用自动审核接口
                 wmNewsService.autoScanWmNews(Long.valueOf(wmNews.getId()));
                 //审核结束更新状态
-                taskinfo.setStatus(ScheduleConstants.EXECUTED);
+                taskinfo.setStatus(ScheduleConstants.CONSUMED);
                 client.updateTask(taskinfo);
             }else {
                 log.warn("接收到重复消息,具体信息为{}", JSON.toJSONString(taskinfo));
