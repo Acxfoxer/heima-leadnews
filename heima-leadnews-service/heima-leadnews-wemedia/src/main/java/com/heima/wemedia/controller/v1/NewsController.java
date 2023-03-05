@@ -39,8 +39,8 @@ public class NewsController {
      * @return
      */
     @PostMapping("/news/down_or_up")
-    public ResponseResult downOrUp(@RequestBody WmNews wmNews){
-        return wmNewsService.downOrUp(wmNews);
+    public ResponseResult downOrUp(@RequestBody WmNewsDto wmNewsDto){
+        return wmNewsService.downOrUp(wmNewsDto);
     }
 
     /**

@@ -16,6 +16,7 @@
         <module>freemarker-demo</module>
         <module>minio-demo</module>
         <module>tess-4j-demo</module>
+        <module>kafka-demo</module>
     </modules>
 
     <properties>

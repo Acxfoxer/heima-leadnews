@@ -3,6 +3,7 @@ package com.heima.article.service.impl;
 import com.alibaba.fastjson.JSONArray;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.heima.article.mapper.ApArticleConfigMapper;
 import com.heima.article.mapper.ApArticleContentMapper;
 import com.heima.article.mapper.ApArticleMapper;
@@ -18,6 +19,7 @@ import com.heima.model.article.pojos.ApArticleConfig;
 import com.heima.model.article.pojos.ApArticleContent;
 import com.heima.model.article.pojos.ApAuthor;
 import com.heima.model.common.dtos.ResponseResult;
+import com.heima.model.media.pojos.WmNews;
 import freemarker.template.Configuration;
 import freemarker.template.Template;
 import org.apache.commons.lang3.StringUtils;
@@ -30,10 +32,7 @@ import javax.validation.constraints.NotNull;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.io.StringWriter;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -84,10 +83,14 @@ public class ApArticleServiceImpl extends ServiceImpl<ApArticleMapper, ApArticle
         }
         //4 时间校验
         if(dto.getMaxBehotTime()==null) {
-            dto.setMaxBehotTime(new Date(20000000000000L));
+            //时间为空,最大时间为当前
+            dto.setMaxBehotTime(new Date());
         }
         if(dto.getMinBehotTime()==null) {
-            dto.setMinBehotTime(new Date());
+            //最小时间为空,设置为当前时间一周前
+            Calendar calendar = Calendar.getInstance(TimeZone.getTimeZone("GMT+8"));
+            calendar.add(Calendar.DAY_OF_WEEK_IN_MONTH,-1);
+            dto.setMinBehotTime(calendar.getTime());
         }
         List<ApArticle> apArticles = apArticleMapper.loadArticleList(dto);
         LambdaQueryWrapper<ApArticleContent> lqw = new LambdaQueryWrapper<>();
@@ -175,7 +178,6 @@ public class ApArticleServiceImpl extends ServiceImpl<ApArticleMapper, ApArticle
         return ResponseResult.okResult(apArticle.getId());
     }
 
-
     /**
      * 生成静态页面,并获取访问路径
      * @param content 文章内容
@@ -191,7 +193,8 @@ public class ApArticleServiceImpl extends ServiceImpl<ApArticleMapper, ApArticle
             try {
                 template = configuration.getTemplate("article.ftl");
                 Map<String, Object> params = new HashMap<>();
-                params.put("content", JSONArray.parseArray(content));
+                ObjectMapper mapper = new ObjectMapper();
+                params.put("content", mapper.readValue(content,List.class));
                 template.process(params,out);
                 InputStream is = new ByteArrayInputStream(out.toString().getBytes());
                 //3.通过上传html文件到minio中,获取访问路径

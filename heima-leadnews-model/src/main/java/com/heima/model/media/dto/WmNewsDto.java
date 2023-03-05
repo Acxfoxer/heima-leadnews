@@ -50,4 +50,8 @@ public class WmNewsDto {
      * 保存草稿,还是提交审核
      */
     private Boolean draft;
+    /**
+     * 是否上架  0 下架  1 上架
+     */
+    private Short enable;
 }

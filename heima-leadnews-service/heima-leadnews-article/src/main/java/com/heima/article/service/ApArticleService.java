@@ -5,6 +5,7 @@ import com.heima.model.article.dto.ArticleDto;
 import com.heima.model.article.dto.ArticleHomeDto;
 import com.heima.model.article.pojos.ApArticle;
 import com.heima.model.common.dtos.ResponseResult;
+import com.heima.model.media.pojos.WmNews;
 
 import java.util.List;
 
@@ -26,4 +27,6 @@ public interface ApArticleService extends IService<ApArticle> {
      * @return
      */
     ResponseResult saveOrUpdate(ArticleDto dto);
+
+
 }

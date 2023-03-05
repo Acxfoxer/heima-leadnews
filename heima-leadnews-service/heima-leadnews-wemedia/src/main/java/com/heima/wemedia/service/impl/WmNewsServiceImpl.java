@@ -2,10 +2,13 @@ package com.heima.wemedia.service.impl;
 
 import com.alibaba.fastjson.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.heima.common.aliyun.GreenImageScan;
 import com.heima.common.aliyun.GreenTextScan;
 import com.heima.common.constants.MqConstants;
@@ -29,27 +32,25 @@ import com.heima.utils.common.SensitiveWordUtil;
 import com.heima.utils.common.UserThreadLocalUtils;
 import com.heima.wemedia.mapper.*;
 import com.heima.wemedia.service.WmNewsService;
+import lombok.extern.slf4j.Slf4j;
 import net.sourceforge.tess4j.TesseractException;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.amqp.AmqpException;
-import org.springframework.amqp.core.Message;
-import org.springframework.amqp.core.MessageBuilder;
-import org.springframework.amqp.core.MessageDeliveryMode;
-import org.springframework.amqp.core.MessagePostProcessor;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.jetbrains.annotations.NotNull;
 import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.support.SendResult;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.context.request.RequestContextHolder;
-import org.springframework.web.context.request.ServletRequestAttributes;
+import org.springframework.util.concurrent.FailureCallback;
+import org.springframework.util.concurrent.SuccessCallback;
 
 import javax.annotation.Resource;
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -59,6 +60,7 @@ import java.util.stream.Collectors;
  */
 @Service
 @Transactional(rollbackFor = {CustomException.class})
+@Slf4j
 public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> implements WmNewsService {
     @Resource
     WmNewsMapper newsMapper;
@@ -88,6 +90,8 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
     ThreadPoolTaskExecutor threadPoolTaskExecutor;
     @Resource
     TaskInfoClient client;
+    @Autowired
+    KafkaTemplate<String,String> kafkaTemplate;
 
     /**
      * 分页
@@ -109,8 +113,6 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
         lqw.eq(dto.getChannelId()!=null,WmNews::getChannelId,dto.getChannelId());
         //默认用户id
         lqw.eq(WmNews::getUserId,UserThreadLocalUtils.get());
-        //是否上架或下架
-        lqw.eq(WmNews::getEnable,1);
         //时间范围查询
         if(dto.getBeginPubDate()!=null&&dto.getEndPubDate()!=null){
             lqw.between(WmNews::getPublishTime,dto.getBeginPubDate(),dto.getEndPubDate());
@@ -282,15 +284,55 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
 
     /**
      * 上架或下架
-     * @param wmNews
+     * @param wmNewsDto 参数
      * @return
      */
     @Override
-    public ResponseResult downOrUp(WmNews wmNews) {
-        UpdateWrapper<WmNews> uw = new UpdateWrapper<>();
-        uw.eq(wmNews.getId()!=null,"id",wmNews.getId());
-        uw.set(wmNews.getEnable()!=null,"status",0);
+    public ResponseResult downOrUp(WmNewsDto wmNewsDto) {
+        //1.参数校验
+        if(wmNewsDto==null){
+            return ResponseResult.errorResult(AppHttpCodeEnum.AP_USER_DATA_NOT_EXIST);
+        }
+        //2.查询文章
+        WmNews wmNews = this.getById(wmNewsDto.getId());
+        //2.1判断状态
+        if(!wmNews.getStatus().equals(WmNews.Status.PUBLISHED.getCode())){
+            //2.2未发布的不能下架
+            return ResponseResult.errorResult(AppHttpCodeEnum.PARAM_INVALID,"无法下架未发布的文章");
+        }
+        //3.修改状态
+        LambdaUpdateWrapper<WmNews> uw = new LambdaUpdateWrapper<>();
+        uw.eq(wmNewsDto.getId()!=null,WmNews::getId,wmNewsDto.getId());
+        uw.set(wmNewsDto.getEnable()!=null&&
+                wmNewsDto.getEnable()>-1&&
+                wmNewsDto.getEnable()<2,WmNews::getEnable,wmNewsDto.getEnable());
+        //3.1设置下架原因
+        String reason = wmNewsDto.getEnable()==0?"未知原因下架,请修改":"发布成功";
+        uw.set(WmNews::getReason,reason);
         this.update(uw);
+        //4.发送消息给媒体端,修改媒体端信息,异步请求
+        if(wmNews.getArticleId()!=null){
+            wmNews.setEnable(wmNewsDto.getEnable());
+            ObjectMapper mapper = new ObjectMapper();
+            try {
+                String wmNewsStr = mapper.writeValueAsString(wmNews);
+                kafkaTemplate.send(MqConstants.WM_NEWS_UP_OR_DOWN_TOPIC,"wmNews",wmNewsStr).addCallback(new SuccessCallback<SendResult<String, String>>() {
+                    //成功回调函数
+                    @Override
+                    public void onSuccess(SendResult<String, String> result) {
+                        log.info("消息消费成功:{}",result.getRecordMetadata());
+                    }
+                }, new FailureCallback() {
+                    //失败回调函数
+                    @Override
+                    public void onFailure(@NotNull Throwable ex) {
+                        log.error("消息消费失败,具体原因为:{}",ex.getMessage());
+                    }
+                });
+            } catch (JsonProcessingException e) {
+                throw new RuntimeException(e);
+            }
+        }
         return ResponseResult.okResult(AppHttpCodeEnum.SUCCESS);
     }
 
@@ -302,7 +344,6 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
      * @param id  传递新闻id
      * @param
      */
-
     @Override
     public void autoScanWmNews(Long id) {
         //1.查询自媒体文章

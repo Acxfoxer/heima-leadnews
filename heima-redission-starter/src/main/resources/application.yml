@@ -1,0 +1,4 @@
+redisson:
+  server: redis://192.168.136.101:6379
+  password: 123456
+

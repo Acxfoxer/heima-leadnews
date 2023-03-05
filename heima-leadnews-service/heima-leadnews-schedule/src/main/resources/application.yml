@@ -20,5 +20,7 @@ spring:
     import:
       - nacos:${spring.application.name}-${spring.profiles.active}.${spring.cloud.nacos.config.file-extension}?refresh=true
       - nacos:common.yml
-
+redisson:
+  server: redis://192.168.136.101:6379
+  password: 123456
 

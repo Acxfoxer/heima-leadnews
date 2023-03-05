@@ -65,6 +65,11 @@
             </dependency>
             <dependency>
                 <groupId>com.heima</groupId>
+                <artifactId>heima-redission-starter</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.heima</groupId>
                 <artifactId>heima-file-starter</artifactId>
                 <version>${project.version}</version>
             </dependency>

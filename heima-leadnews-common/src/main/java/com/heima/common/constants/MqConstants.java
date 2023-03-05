@@ -15,5 +15,8 @@ public class MqConstants {
     public final static String DELAY_EXCHANGE ="delay.direct";
     public final static String DELAY_QUEUE ="delay.queue";
     public final static String DELAY_KEY ="delay.key";
-
+    /**
+     * kafka 监听主题
+     */
+    public static final String WM_NEWS_UP_OR_DOWN_TOPIC="wm.news.up.or.down.topic";
 }

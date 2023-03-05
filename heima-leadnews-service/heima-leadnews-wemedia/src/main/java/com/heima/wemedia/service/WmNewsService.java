@@ -31,10 +31,10 @@ public interface WmNewsService extends IService<WmNews> {
 
     /**
      * 上架或下架
-     * @param wmNews
+     * @param wmNewsDto 参数
      * @return
      */
-    ResponseResult downOrUp(WmNews wmNews);
+    ResponseResult downOrUp(WmNewsDto wmNewsDto);
 
     /**
      * 自媒体文章审核

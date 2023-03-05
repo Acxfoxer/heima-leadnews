@@ -14,20 +14,12 @@ spring:
         namespace: 245fe186-8a54-4952-8aed-b2cac4c75c2e
         file-extension: yml
         refresh-enabled: true
-  rabbitmq:
-    username: lei
-    password: 123456
-    virtual-host: /
-    host: 192.168.136.101
-    port: 5672
   config:
     import:
       - nacos:${spring.application.name}-${spring.profiles.active}.${spring.cloud.nacos.config.file-extension}?refresh=true
       - nacos:common.yml
 #开启熔断
 feign:
-  #  httpclient:
-  #    enabled: true
   client:
     config:
       default:
@@ -35,7 +27,6 @@ feign:
         connect-timeout: 2000
         read-timeout: 2000
   circuitbreaker:
-    group:
-      enabled: true
+    enabled: true
 
 

@@ -20,5 +20,9 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-amqp</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.heima</groupId>
+            <artifactId>heima-redission-starter</artifactId>
+        </dependency>
     </dependencies>
 </project>
