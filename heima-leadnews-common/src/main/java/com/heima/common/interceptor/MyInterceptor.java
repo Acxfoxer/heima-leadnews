@@ -37,15 +37,11 @@ public class MyInterceptor implements HandlerInterceptor {
             response.setStatus(403);
             return false;
         }
-        String mediaLoginUrl = "/article";
-        String userLoginUrl = "/login_auth";
-        if(!request.getRequestURI().contains(mediaLoginUrl)&&!request.getRequestURI().contains(userLoginUrl)){
-            String userId = request.getHeader("userId");
-            //把用户id存入ThreadLocal中
-            if(userId!=null){
-                UserThreadLocalUtils.setUserID(Long.valueOf(userId));
-                log.info("wmTokenFilter设置用户Id到ThreadLocal中...");
-            }
+        String userId = request.getHeader("userId");
+        //把用户id存入ThreadLocal中
+        if(userId!=null){
+            UserThreadLocalUtils.setUserID(Long.valueOf(userId));
+            log.info("wmTokenFilter设置用户Id到ThreadLocal中...");
         }
         return true;
     }
