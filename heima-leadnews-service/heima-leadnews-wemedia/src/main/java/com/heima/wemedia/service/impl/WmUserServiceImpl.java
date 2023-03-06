@@ -47,7 +47,7 @@ public class WmUserServiceImpl extends ServiceImpl<WmUserMapper, WmUser> impleme
             this.update(uw);
             //4.返回数据  jwt
             Map<String,Object> map  = new HashMap<>(20);
-            map.put("token", AppJwtUtil.getToken(wmUser.getId().longValue()));
+            map.put("token", AppJwtUtil.getToken(wmUser.getId()));
             wmUser.setSalt("");
             wmUser.setPassword("");
             map.put("user",wmUser);

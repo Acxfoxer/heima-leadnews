@@ -3,37 +3,44 @@ package com.heima.search.service.Impl;
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch._types.SortOrder;
 import co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery;
-import co.elastic.clients.elasticsearch._types.query_dsl.Query;
 import co.elastic.clients.elasticsearch.core.IndexResponse;
 import co.elastic.clients.elasticsearch.core.SearchResponse;
 import co.elastic.clients.elasticsearch.core.search.HighlightField;
 import co.elastic.clients.elasticsearch.core.search.Hit;
 import co.elastic.clients.json.JsonData;
-import co.elastic.clients.util.ObjectBuilder;
 import com.heima.model.article.dto.SearchDto;
 import com.heima.model.common.dtos.ResponseResult;
 import com.heima.model.common.enums.AppHttpCodeEnum;
 import com.heima.model.search.vos.SearchArticleVo;
+import com.heima.search.service.ApUserSearchService;
 import com.heima.search.service.SearchService;
+import com.heima.utils.common.UserThreadLocalUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Function;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * @author 18727
  */
 @Service
 @Slf4j
+@Transactional
 public class SearchServiceImpl implements SearchService {
     @Resource(name = "client")
     ElasticsearchClient esClient;
+    @Resource
+    ApUserSearchService userSearchService;
+    @Resource(name = "LeeAsyncExecutor")
+    ThreadPoolTaskExecutor threadPoolTaskExecutor;
     /**
      * 查询文章-分页检索
      * @param searchDto 查询条件类
@@ -68,16 +75,23 @@ public class SearchServiceImpl implements SearchService {
                     , SearchArticleVo.class);
             //结果中获取对象
             List<SearchArticleVo> result = getResult(response);
+            //异步保存搜索记录
+            Long userId = UserThreadLocalUtils.get();
+            if(searchDto.getMinBehotTime().getTime()>System.currentTimeMillis()){
+                CompletableFuture<Void> future = CompletableFuture.runAsync(()->{
+                    UserThreadLocalUtils.setUserID(userId);
+                    userSearchService.addApUserSearch(searchDto.getSearchWords());
+                },threadPoolTaskExecutor.getThreadPoolExecutor());
+            }
             return ResponseResult.okResult(result);
         } catch (IOException e) {
             log.error(e.getMessage());
-            return ResponseResult.errorResult(AppHttpCodeEnum.SERVER_ERROR);
+            return ResponseResult.errorResult(AppHttpCodeEnum.SERVER_ERROR,"分页检索失败");
         }
     }
 
     /**
      * 添加数据到es
-     *
      * @param searchArticleVo
      * @return
      */

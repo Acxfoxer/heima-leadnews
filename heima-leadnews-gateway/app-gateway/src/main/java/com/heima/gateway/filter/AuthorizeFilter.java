@@ -41,12 +41,19 @@ public class AuthorizeFilter implements Ordered, GlobalFilter {
             if(claimsBody==null){
                 //返回
                 response.setStatusCode(HttpStatus.UNAUTHORIZED);
-                return response.setComplete(); //终止请求方法
+                //终止请求方法
+                return response.setComplete();
             }
             int result = AppJwtUtil.verifyToken(claimsBody);
             if(result==0||result==-1){
+                //转发用户信息
+                String userId = claimsBody.get("id").toString();
+                //构建请求
+                ServerHttpRequest serverHttpRequest = request.mutate()
+                        .header("userId",userId).build();
+                ServerWebExchange webExchange = exchange.mutate().request(serverHttpRequest).build();
                 //放行请求
-                return chain.filter(exchange);
+                return chain.filter(webExchange);
             }
         } catch (Exception e) {
             e.printStackTrace();

@@ -1,6 +1,7 @@
 package com.heima.mongo.Dao;
 
-import com.heima.model.search.pojos.ApUserSearch;
+
+import com.heima.model.search.pojos.ApAssociateWords;
 import org.springframework.data.mongodb.repository.MongoRepository;
 import org.springframework.stereotype.Repository;
 
@@ -8,5 +9,5 @@ import org.springframework.stereotype.Repository;
  * @author 18727
  */
 @Repository
-public interface ApUserSearchDao extends MongoRepository<ApUserSearch,String> {
+public interface ApAssociateDao extends MongoRepository<ApAssociateWords,String> {
 }

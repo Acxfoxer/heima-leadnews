@@ -41,7 +41,6 @@ public class MyInterceptor implements HandlerInterceptor {
         //把用户id存入ThreadLocal中
         if(userId!=null){
             UserThreadLocalUtils.setUserID(Long.valueOf(userId));
-            log.info("wmTokenFilter设置用户Id到ThreadLocal中...");
         }
         return true;
     }

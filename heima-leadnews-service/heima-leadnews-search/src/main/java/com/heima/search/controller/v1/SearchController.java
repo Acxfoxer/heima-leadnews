@@ -2,8 +2,8 @@ package com.heima.search.controller.v1;
 
 import com.heima.model.article.dto.SearchDto;
 import com.heima.model.common.dtos.ResponseResult;
+import com.heima.search.service.ApUserSearchService;
 import com.heima.search.service.Impl.SearchServiceImpl;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -15,8 +15,16 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/")
 public class SearchController {
-    @Autowired
+    final
     SearchServiceImpl searchService;
+    final
+    ApUserSearchService userSearchService;
+
+    public SearchController(SearchServiceImpl searchService, ApUserSearchService userSearchService) {
+        this.searchService = searchService;
+        this.userSearchService = userSearchService;
+    }
+
     /**
      * 自动补全功能
      * @param searchDto 接受的参数
@@ -24,7 +32,7 @@ public class SearchController {
      */
     @PostMapping("/associate/search/")
     public ResponseResult associateSearch(@RequestBody SearchDto searchDto){
-        return null;
+        return userSearchService.loadAssociateRecord(searchDto);
     }
     /**
      * 查询
@@ -41,7 +49,7 @@ public class SearchController {
      * @param searchDto 接受的参数
      * @return
      */
-    @PostMapping("hot_keywords/loadHot")
+    @PostMapping("hot_keywords/load")
     public ResponseResult loadHotArticle(@RequestBody SearchDto searchDto){
         return null;
     }
@@ -50,9 +58,8 @@ public class SearchController {
      * @param searchDto 接受的参数
      * @return
      */
-    @PostMapping("hot_keywords/loadHistory")
+    @PostMapping("history/load")
     public ResponseResult loadHistoryArticle(@RequestBody SearchDto searchDto){
-        return null;
+        return userSearchService.loadHistoryRecords(searchDto);
     }
-
 }

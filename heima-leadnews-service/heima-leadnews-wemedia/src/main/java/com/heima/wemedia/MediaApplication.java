@@ -37,7 +37,7 @@ public class MediaApplication {
         return interceptor;
     }
     /**
-     * 序列号配置
+     * 序列化配置
      */
     @Bean
     public MessageConverter jsonMessageConverter(){
