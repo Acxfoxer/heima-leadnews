@@ -16,3 +16,11 @@ services:
       - /mydata/nginx/conf/conf.d:/etc/nginx/conf.d
       - /mydata/nginx/logs:/var/log/nginx
       - /mydata/nginx/html:/usr/share/nginx/html
+  mongo:
+    image: mongo:latest
+    container_name: "mongo"
+    ports:
+      - 27017:27017
+    volumes:
+      - /mydata/mongo/local_data:/data``
+    restart: always

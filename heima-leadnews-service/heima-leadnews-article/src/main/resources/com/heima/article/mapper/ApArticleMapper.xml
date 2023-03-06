@@ -51,4 +51,12 @@
         </where>
 
     </select>
+    <select id="getResult" resultType="com.heima.model.search.vos.SearchArticleVo">
+        SELECT
+            ae.*,
+            ac.content
+        FROM
+            ap_article ae
+                LEFT JOIN ap_article_content  ac ON ae.id=ac.article_id
+    </select>
 </mapper>

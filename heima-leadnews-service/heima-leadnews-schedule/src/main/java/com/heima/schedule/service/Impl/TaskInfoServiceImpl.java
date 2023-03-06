@@ -8,6 +8,7 @@ import com.heima.model.common.enums.AppHttpCodeEnum;
 import com.heima.model.schedule.pojos.Taskinfo;
 import com.heima.schedule.mapper.TaskinfoMapper;
 import com.heima.schedule.service.TaskInfoService;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageBuilder;
 import org.springframework.amqp.core.MessageDeliveryMode;
@@ -28,6 +29,7 @@ import java.util.TimeZone;
  * @author 18727
  */
 @Service
+@Slf4j
 public class TaskInfoServiceImpl extends ServiceImpl<TaskinfoMapper,Taskinfo> implements TaskInfoService {
     @Resource
     private RabbitTemplate template;
@@ -42,9 +44,9 @@ public class TaskInfoServiceImpl extends ServiceImpl<TaskinfoMapper,Taskinfo> im
         //获取未来五分钟时间
         Calendar calendar = Calendar.getInstance();
         calendar.add(Calendar.MINUTE,5);
+        this.save(taskinfo);
         //大于则不发送消息
         if(taskinfo.getExecuteTime().after(calendar.getTime())){
-            this.save(taskinfo);
             return ResponseResult.okResult(AppHttpCodeEnum.SUCCESS);
         }
         Message message;
@@ -54,12 +56,21 @@ public class TaskInfoServiceImpl extends ServiceImpl<TaskinfoMapper,Taskinfo> im
             //大于当前时间,小于当前时间+5分钟,发送延迟消息
             delayTime= calendar.getTimeInMillis()-taskinfo.getExecuteTime().getTime();
         }
-        message = MessageBuilder.withBody(taskinfo.getTaskId().toString().getBytes(StandardCharsets.UTF_8))
+            byte[] bytes = taskinfo.getTaskId().toString().getBytes(StandardCharsets.UTF_8);
+            message = MessageBuilder.withBody(bytes)
                 .setHeader("x-delay", delayTime)
                 .setDeliveryMode(MessageDeliveryMode.PERSISTENT)
                 .build();
         //发送消息
+            //设置请求头
+            MessagePostProcessor messagePostProcessor = message1 -> {
+                message1.getMessageProperties().setHeader("token","Delay-Publish-business");
+                return message1;
+            };
         template.convertAndSend(taskinfo.getMqExchange(),taskinfo.getMqRoutingKey(),message);
+        //发送消息后修改任务状态,
+            taskinfo.setStatus(1);
+            this.updateById(taskinfo);
         }
         return ResponseResult.okResult(AppHttpCodeEnum.SUCCESS);
     }
@@ -102,7 +113,7 @@ public class TaskInfoServiceImpl extends ServiceImpl<TaskinfoMapper,Taskinfo> im
                         .build();
                 //设置请求头
                 MessagePostProcessor messagePostProcessor = message1 -> {
-                    message1.getMessageProperties().setHeader("regular",regularToken);
+                    message1.getMessageProperties().setHeader("token",regularToken);
                     return message1;
                 };
                 template.convertAndSend(taskinfo.getMqExchange(),taskinfo.getMqRoutingKey(),msg,messagePostProcessor);

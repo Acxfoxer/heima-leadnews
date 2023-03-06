@@ -1,6 +1,7 @@
 package com.heima.feign.article;
 
 import com.heima.feign.config.FeignClientsConfigurationCustom;
+import com.heima.feign.fallback.TaskInfoClientFallBack;
 import com.heima.model.common.dtos.ResponseResult;
 import com.heima.model.schedule.pojos.Taskinfo;
 import org.springframework.cloud.openfeign.FeignClient;
@@ -12,7 +13,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 /**
  * @author 18727
  */
-@FeignClient(name = "schedule-service",configuration = FeignClientsConfigurationCustom.class)
+@FeignClient(name = "schedule-service",configuration = FeignClientsConfigurationCustom.class,
+fallbackFactory = TaskInfoClientFallBack.class)
 public interface TaskInfoClient {
     /**
      * 添加延迟发布任务

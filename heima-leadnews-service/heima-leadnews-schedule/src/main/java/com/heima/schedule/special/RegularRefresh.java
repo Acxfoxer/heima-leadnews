@@ -20,7 +20,6 @@ public class RegularRefresh {
     private TaskInfoService service;
     @Resource(name = "redission")
     private RedissonClient redissonClient;
-    @Scheduled(cron = "0/4 * * * * ?" )
     @PostConstruct
     public void refresh(){
         //获取锁

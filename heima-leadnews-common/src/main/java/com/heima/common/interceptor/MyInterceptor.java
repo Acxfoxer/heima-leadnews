@@ -41,10 +41,11 @@ public class MyInterceptor implements HandlerInterceptor {
         String userLoginUrl = "/login_auth";
         if(!request.getRequestURI().contains(mediaLoginUrl)&&!request.getRequestURI().contains(userLoginUrl)){
             String userId = request.getHeader("userId");
-            System.out.println(userId);
             //把用户id存入ThreadLocal中
-            UserThreadLocalUtils.setUserID(Long.valueOf(userId));
-            log.info("wmTokenFilter设置用户Id到ThreadLocal中...");
+            if(userId!=null){
+                UserThreadLocalUtils.setUserID(Long.valueOf(userId));
+                log.info("wmTokenFilter设置用户Id到ThreadLocal中...");
+            }
         }
         return true;
     }

@@ -164,27 +164,14 @@ public class WmNewsServiceImpl extends ServiceImpl<WmNewsMapper, WmNews> impleme
         saveRelationInfoContent(dto,image,wmNews);
         //6 建立文章封面图片与素材库关系
         saveRelationInfo(dto,image,wmNews);
-         /*7 调用自动审核方法
-        7.1调用spring工具类,获取本类的代理对象
-        WmNewsServiceImpl wmNewsServiceBean = SpringUtil.getBean(WmNewsServiceImpl.class);
-        7.2异步调用要考虑请求头问题
-        7.3获取当前线程请求头信息(解决Feign异步调用丢失请求头问题)
-        ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder
-                .getRequestAttributes();
-        7.4在ServeletRequestAttributes中设置各请求头，作用域为session
-        attributes.setAttribute("token",attributes.getRequest().getHeader("token"),1);
-        attributes.setAttribute("userId",attributes.getRequest().getHeader("userId"),2);
-        7.5异步调用.当前线程方法设置请求头到异步请求
-        threadPoolTaskExecutor.execute(()->{
-            异步调用前设置请求头
-            RequestContextHolder.setRequestAttributes(attributes, true);
-            异步调用feign接口
-            wmNewsServiceBean.autoScanWmNews(Long.valueOf(wmNews.getId()));
-        });*/
         addTack(wmNews);
         return ResponseResult.okResult(AppHttpCodeEnum.SUCCESS);
     }
 
+    /**
+     * 添加任务
+     * @param wmNews
+     */
     public void addTack(WmNews wmNews){
         Taskinfo taskinfo = new Taskinfo();
         if(wmNews.getPublishTime()==null){

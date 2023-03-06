@@ -34,16 +34,18 @@ public class ListenArticleDelayMsg {
     TaskInfoClient client;
     @RabbitListener(bindings = @QueueBinding(
             value =@Queue(name = MqConstants.DELAY_QUEUE,autoDelete = "false"),
-            exchange = @Exchange(name = MqConstants.DELAY_EXCHANGE,autoDelete = "false",durable = "true",delayed = "true"),
+            exchange = @Exchange(name = MqConstants.DELAY_EXCHANGE,delayed = "true"),
             key = MqConstants.DELAY_KEY))
     public void listen(@Payload String taskId,
-                       @Header("token")Object token,
-                       @Header("userId")Object userId,
-                       @Header("regular")Object regular){
+                       @Header("token")Object token){
         //获取请求上下文
         if(StringUtils.isNotBlank(taskId)){
+            ServletRequestAttributes requestAttributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+            if(requestAttributes!=null){
+                requestAttributes.setAttribute("token",token,1);
+            }
             Taskinfo taskinfo = client.selectTaskById(Long.valueOf(taskId));
-            //判断任务状态是不是等于1,等于1表示已经未消费
+            //判断任务状态是不是等于1,等于1表示已经消息发送那个但未消费
             if(taskinfo.getStatus()== ScheduleConstants.EXECUTED){
                 WmNews wmNews = JSON.parseObject(taskinfo.getParameters(), WmNews.class);
                 //调用自动审核接口

@@ -9,7 +9,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @Data
 @ConfigurationProperties(prefix = "redisson")
 public class RedissonConfigProperties {
-
     private String server;
     private String password;
 }

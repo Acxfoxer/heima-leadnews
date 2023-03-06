@@ -3,6 +3,7 @@ package com.heima.article.service.impl;
 import com.alibaba.fastjson.JSONArray;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.heima.article.mapper.ApArticleConfigMapper;
 import com.heima.article.mapper.ApArticleContentMapper;
@@ -10,6 +11,7 @@ import com.heima.article.mapper.ApArticleMapper;
 import com.heima.article.mapper.ApAuthorMapper;
 import com.heima.article.service.ApArticleService;
 import com.heima.common.constants.ArticleLoadMode;
+import com.heima.common.constants.MqConstants;
 import com.heima.common.exceptionHandle.CustomException;
 import com.heima.minio.service.FileStorageService;
 import com.heima.model.article.dto.ArticleDto;
@@ -20,12 +22,17 @@ import com.heima.model.article.pojos.ApArticleContent;
 import com.heima.model.article.pojos.ApAuthor;
 import com.heima.model.common.dtos.ResponseResult;
 import com.heima.model.media.pojos.WmNews;
+import com.heima.model.search.vos.SearchArticleVo;
 import freemarker.template.Configuration;
 import freemarker.template.Template;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.support.SendResult;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.concurrent.ListenableFutureCallback;
 
 import javax.annotation.Resource;
 import javax.validation.constraints.NotNull;
@@ -40,6 +47,7 @@ import java.util.stream.Collectors;
  */
 @Service
 @Transactional(rollbackFor = CustomException.class)
+@Slf4j
 public class ApArticleServiceImpl extends ServiceImpl<ApArticleMapper, ApArticle> implements ApArticleService {
     @Resource
     private ApArticleMapper apArticleMapper;
@@ -53,7 +61,8 @@ public class ApArticleServiceImpl extends ServiceImpl<ApArticleMapper, ApArticle
     private ApArticleConfigMapper apArticleConfigMapper;
     @Resource
     private ApAuthorMapper apAuthorMapper;
-
+    @Resource
+    KafkaTemplate<String,String> kafkaTemplate;
     private final static short MAX_PAGE_SIZE = 50;
 
     /**
@@ -142,16 +151,17 @@ public class ApArticleServiceImpl extends ServiceImpl<ApArticleMapper, ApArticle
             apArticle.setAuthorId(id.longValue());
             apAuthorMapper.updateById(author);
         }
-        //2.保存文章信息 ap_article
+        //2.保存文章内容信息 ap_article_content
         //不带id表示新增,带id表示修改
         if(dto.getId()==null){
             BeanUtils.copyProperties(dto,apArticle);
+            //2.1保存文章
             this.save(apArticle);
-            //2.保存文章内容 ap_article_content
+            //3.保存文章内容 ap_article_content
             content.setArticleId(apArticle.getId());
             content.setContent(dto.getContent());
             contentMapper.insert(content);
-            //3.保存文章配置信息
+            //4.保存文章配置信息
             ApArticleConfig apArticleConfig = new ApArticleConfig();
             apArticleConfig.setIsComment(1);
             apArticleConfig.setIsForward(1);
@@ -165,17 +175,54 @@ public class ApArticleServiceImpl extends ServiceImpl<ApArticleMapper, ApArticle
                 ApAuthor author1 = apAuthorMapper.selectOne(lq);
                 apArticle.setAuthorId(Long.valueOf(author1.getId().toString()));
             }
-            //获取静态页面路径
+            //5获取静态页面路径
             String staticUrl = createStaticUrl(apArticle, dto.getContent());
             apArticle.setStaticUrl(staticUrl);
             this.updateById(apArticle);
-            //更新文章内容
+            //6更新文章内容
             content.setContent(dto.getContent());
             LambdaQueryWrapper<ApArticleContent> lqw = new LambdaQueryWrapper<>();
             contentMapper.update(content, lqw.eq(ApArticleContent::getArticleId,dto.getId()));
+            //7发送消息到kafka
+            publishToKafka(dto, apArticle);
         }
         //返回新增id
         return ResponseResult.okResult(apArticle.getId());
+    }
+
+    private void publishToKafka(ArticleDto dto, ApArticle apArticle){
+        ObjectMapper mapper = new ObjectMapper();
+        SearchArticleVo searchArticleVo = new SearchArticleVo();
+        BeanUtils.copyProperties(apArticle,searchArticleVo);
+        searchArticleVo.setContent(dto.getContent());
+        String str = null;
+        try {
+            str = mapper.writeValueAsString(searchArticleVo);
+        } catch (JsonProcessingException e) {
+            log.error("服务器异常:{}",e.getMessage());
+        }
+        kafkaTemplate.send(MqConstants.AP_ARTICLE_SAVE,"searchArticleVo",str).addCallback(
+                new ListenableFutureCallback<SendResult<String, String>>() {
+                    @Override
+                    public void onFailure(Throwable ex) {
+                        log.error("服务器异常:{}",ex.getMessage());
+                    }
+                    @Override
+                    public void onSuccess(SendResult<String, String> result) {
+                        log.info("消费成功");
+                    }
+                }
+        );
+    }
+
+    /**
+     * 查询文档接口
+     *
+     * @return
+     */
+    @Override
+    public List<SearchArticleVo> getSearchArticleVo() {
+        return apArticleMapper.getResult();
     }
 
     /**
@@ -192,7 +239,7 @@ public class ApArticleServiceImpl extends ServiceImpl<ApArticleMapper, ApArticle
             Template template = null;
             try {
                 template = configuration.getTemplate("article.ftl");
-                Map<String, Object> params = new HashMap<>();
+                Map<String, Object> params = new HashMap<>(520);
                 ObjectMapper mapper = new ObjectMapper();
                 params.put("content", mapper.readValue(content,List.class));
                 template.process(params,out);
